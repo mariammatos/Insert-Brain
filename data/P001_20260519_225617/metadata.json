@@ -1,0 +1,49 @@
+{
+    "participant_id": "P001",
+    "board_id": -1,
+    "serial_port": "COM3",
+    "trials_per_class": 10,
+    "classes": {
+        "LEFT": {
+            "label": 1,
+            "symbol": "\u2190"
+        },
+        "RIGHT": {
+            "label": 2,
+            "symbol": "\u2192"
+        },
+        "FEET": {
+            "label": 3,
+            "symbol": "\u2193"
+        },
+        "REST": {
+            "label": 0,
+            "symbol": "+"
+        }
+    },
+    "fixation_time": 2.0,
+    "cue_time": 1.0,
+    "imagery_time": 4.0,
+    "rest_time": 2.0,
+    "baseline_open": 30,
+    "baseline_closed": 30,
+    "sampling_rate": 250,
+    "eeg_channels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+    ]
+}
