@@ -5,6 +5,8 @@
 import os
 import json
 import pandas as pd
+import time
+
 
 from datetime import datetime
 
@@ -13,9 +15,7 @@ class DataLogger:
 
     def __init__(self, participant_id):
 
-        timestamp = datetime.now().strftime(
-            "%Y%m%d_%H%M%S"
-        )
+        timestamp = timestamp = time.time()  # Unix time, mesmo referencial do board
 
         self.session_path = os.path.join(
             "data",
