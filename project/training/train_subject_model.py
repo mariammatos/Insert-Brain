@@ -54,8 +54,13 @@ mne.set_log_level("WARNING")
 
 L_FREQ      = 8.0
 H_FREQ      = 30.0
-TMIN        = 0.5   # segundos após onset do cue
-TMAX        = 2.5   # segundos após onset do cue
+
+# Janela de extração relativa ao onset do cue (segundos).
+# EPOCH_TMIN / EPOCH_TMAX são usados APENAS para definir as Epochs do MNE.
+# A âncora temporal (início do EEG) é sempre calculada a partir do CSV.
+EPOCH_TMIN  = 0.5   # segundos após onset do cue
+EPOCH_TMAX  = 2.5   # segundos após onset do cue
+
 N_CSP       = 4
 RANDOM_SEED = 42
 N_FOLDS     = 5
@@ -68,13 +73,28 @@ N_FOLDS     = 5
 def load_session_data(session_path):
     """
     Lê EEG, markers e metadata de uma pasta de sessão.
-    """
 
-    eeg_df   = pd.read_csv(os.path.join(session_path, "eeg_raw.csv"))
-    markers  = pd.read_csv(os.path.join(session_path, "markers.csv"))
+    Returns
+    -------
+    eeg_df    : DataFrame com colunas ch_0..ch_N + timestamp
+    markers   : DataFrame com colunas timestamp, event, label
+    metadata  : dict com sampling_rate, eeg_channels, classes, timings
+    """
+    eeg_df  = pd.read_csv(os.path.join(session_path, "eeg_raw.csv"))
+    markers = pd.read_csv(os.path.join(session_path, "markers.csv"))
 
     with open(os.path.join(session_path, "metadata.json"), "r") as f:
         metadata = json.load(f)
+
+    # Validações básicas de integridade
+    if "timestamp" not in eeg_df.columns:
+        raise ValueError("eeg_raw.csv não tem coluna 'timestamp'.")
+    if "timestamp" not in markers.columns:
+        raise ValueError("markers.csv não tem coluna 'timestamp'.")
+
+    eeg_cols = [c for c in eeg_df.columns if c.startswith("ch_")]
+    if len(eeg_cols) == 0:
+        raise ValueError("eeg_raw.csv não tem colunas 'ch_*'.")
 
     return eeg_df, markers, metadata
 
@@ -86,8 +106,17 @@ def load_session_data(session_path):
 def build_mne_raw(eeg_df, metadata):
     """
     Constrói um mne.RawArray a partir do CSV da sessão.
-    """
 
+    O timestamp Unix da primeira amostra do EEG é definido como
+    meas_date do Raw para que a referência temporal fique registada
+    (embora o alinhamento com markers seja feito explicitamente em
+    build_epochs, sem depender deste campo).
+
+    Returns
+    -------
+    raw            : mne.RawArray já com montagem definida
+    eeg_start_unix : float — timestamp Unix da 1ª amostra do EEG
+    """
     sfreq = metadata["sampling_rate"]
 
     # Nomes dos canais OpenBCI Cyton+Daisy (16 canais)
@@ -103,10 +132,15 @@ def build_mne_raw(eeg_df, metadata):
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
     raw  = mne.io.RawArray(data, info, verbose=False)
 
+    # Guardar o timestamp da 1ª amostra como meas_date
+    # (informativo; o alinhamento real é feito em build_epochs)
+    eeg_start_unix = float(eeg_df["timestamp"].iloc[0])
+    raw.set_meas_date(eeg_start_unix)
+
     montage = mne.channels.make_standard_montage("standard_1020")
     raw.set_montage(montage, on_missing="ignore", verbose=False)
 
-    return raw
+    return raw, eeg_start_unix
 
 
 # ============================================================
@@ -117,7 +151,6 @@ def preprocess_raw(raw):
     """
     Filtragem banda-larga + ICA para remover artefatos musculares.
     """
-
     raw.filter(L_FREQ, H_FREQ, fir_design="firwin", verbose=False)
 
     ica = ICA(n_components=0.99, random_state=RANDOM_SEED, method="fastica")
@@ -140,16 +173,32 @@ def preprocess_raw(raw):
 # BUILD EPOCHS FROM MARKERS
 # ============================================================
 
-def build_epochs(raw, markers, sfreq, label_filter):
+def build_epochs(raw, markers, sfreq, label_filter, eeg_start_unix):
     """
     Cria mne.Epochs a partir dos markers do DataLogger.
 
-    label_filter: dict {label_int: class_id_for_model}
-        ex: {0: 0, 1: 1, 2: 1, 3: 1}  → REST(0) vs ACTIVE(1)
-        ex: {1: 0, 2: 0, 3: 1}         → HANDS(0) vs FEET(1)
-        ex: {1: 1, 2: 2}               → LEFT(1) vs RIGHT(2)
-    """
+    O alinhamento é feito usando eeg_start_unix (timestamp Unix da
+    primeira amostra do EEG), garantindo que os markers são mapeados
+    para a posição correcta no sinal independentemente de quando a
+    aquisição começou.
 
+    Parameters
+    ----------
+    raw            : mne.RawArray pré-processado
+    markers        : DataFrame com colunas timestamp, event, label
+    sfreq          : float — frequência de amostragem (Hz)
+    label_filter   : dict {label_int: class_id_for_model}
+                     ex: {0: 0, 1: 1, 2: 1, 3: 1}  → REST(0) vs ACTIVE(1)
+                     ex: {1: 0, 2: 0, 3: 1}         → HANDS(0) vs FEET(1)
+                     ex: {1: 1, 2: 2}               → LEFT(1) vs RIGHT(2)
+    eeg_start_unix : float — timestamp Unix da 1ª amostra do EEG
+                     (obtido de eeg_df["timestamp"].iloc[0])
+
+    Returns
+    -------
+    X : np.ndarray (n_epochs, n_channels, n_times)
+    y : np.ndarray (n_epochs,)
+    """
     cue_markers = markers[
         markers["label"].isin(label_filter.keys())
     ].copy()
@@ -159,24 +208,75 @@ def build_epochs(raw, markers, sfreq, label_filter):
             f"Nenhum marker encontrado para labels {list(label_filter.keys())}."
         )
 
-    eeg_start_unix = cue_markers["timestamp"].min() - TMIN
+    # ------------------------------------------------------------------
+    # ALINHAMENTO CORRECTO:
+    # O índice de amostra de cada marker é calculado relativamente ao
+    # início do EEG (primeira amostra do CSV), NÃO relativamente ao
+    # primeiro marker.
+    # ------------------------------------------------------------------
+    events      = []
+    bad_markers = []
 
-    events = []
     for _, row in cue_markers.iterrows():
-        sample   = int((row["timestamp"] - eeg_start_unix) * sfreq)
-        sample   = max(0, min(sample, raw.n_times - 1))
+        # Posição em segundos desde o início do EEG
+        t_rel  = row["timestamp"] - eeg_start_unix
+        sample = int(round(t_rel * sfreq))
+
+        # Verificações de integridade
+        if t_rel < 0:
+            bad_markers.append(
+                f"  ⚠ Marker (label={row['label']}) com timestamp "
+                f"ANTES do início do EEG (t_rel={t_rel:.3f}s). Ignorado."
+            )
+            continue
+
+        if sample >= raw.n_times:
+            bad_markers.append(
+                f"  ⚠ Marker (label={row['label']}) em t_rel={t_rel:.3f}s "
+                f"(amostra {sample}) fora do registo EEG "
+                f"({raw.n_times} amostras). Ignorado."
+            )
+            continue
+
         event_id = int(label_filter[row["label"]])
         events.append([sample, 0, event_id])
 
+    if bad_markers:
+        print("\n".join(bad_markers))
+
+    if len(events) == 0:
+        raise ValueError(
+            "Nenhum marker válido encontrado após verificação de alinhamento. "
+            "Verifica os timestamps do EEG e dos markers."
+        )
+
     events = np.array(events, dtype=int)
+
+    # Aviso se a perda de markers for elevada
+    n_total = len(cue_markers)
+    n_valid = len(events)
+    if n_valid < n_total:
+        pct_lost = (n_total - n_valid) / n_total * 100
+        print(
+            f"  ⚠ {n_total - n_valid}/{n_total} markers ignorados "
+            f"({pct_lost:.1f}%). Verifica a sincronização EEG/markers."
+        )
 
     event_id_map = {str(v): v for v in set(label_filter.values())}
 
     epochs = mne.Epochs(
         raw, events, event_id=event_id_map,
-        tmin=TMIN, tmax=TMAX,
+        tmin=EPOCH_TMIN, tmax=EPOCH_TMAX,
         baseline=None, preload=True, verbose=False
     )
+
+    # Verificar se algum epoch foi descartado pelo MNE (fora dos limites)
+    n_dropped = n_valid - len(epochs)
+    if n_dropped > 0:
+        print(
+            f"  ⚠ {n_dropped} epoch(s) descartados pelo MNE "
+            f"(provavelmente próximos do fim do registo)."
+        )
 
     return epochs.get_data(), epochs.events[:, -1]
 
@@ -190,7 +290,6 @@ def train_pipeline(X, y, classifier_name):
     Treina CSP → Scaler → LDA com Stratified K-Fold CV.
     Devolve o modelo final treinado em todos os dados + métricas.
     """
-
     print(f"\n  [{classifier_name}] {len(X)} épocas | classes: {np.unique(y)}")
 
     clf = Pipeline([
@@ -213,61 +312,36 @@ def train_pipeline(X, y, classifier_name):
     # ----------------------------------------------------------
 
     acc_scores = cross_val_score(
-        clf,
-        X,
-        y,
-        cv=cv,
-        scoring="accuracy"
+        clf, X, y, cv=cv, scoring="accuracy"
     )
 
     kappa_scores = cross_val_score(
-        clf,
-        X,
-        y,
-        cv=cv,
-        scoring=lambda est, Xt, yt:
-        cohen_kappa_score(yt, est.predict(Xt))
+        clf, X, y, cv=cv,
+        scoring=lambda est, Xt, yt: cohen_kappa_score(yt, est.predict(Xt))
     )
 
-    y_pred_cv = cross_val_predict(
-        clf,
-        X,
-        y,
-        cv=cv
-    )
+    y_pred_cv = cross_val_predict(clf, X, y, cv=cv)
 
     # ----------------------------------------------------------
     # Métricas adicionais
     # ----------------------------------------------------------
 
     balanced_acc = balanced_accuracy_score(y, y_pred_cv)
-
-    f1 = f1_score(
-        y,
-        y_pred_cv,
-        average="weighted"
-    )
-
-    report = classification_report(
-        y,
-        y_pred_cv,
-        output_dict=True
-    )
+    f1           = f1_score(y, y_pred_cv, average="weighted")
+    report       = classification_report(y, y_pred_cv, output_dict=True)
 
     # ----------------------------------------------------------
     # Print resultados
     # ----------------------------------------------------------
 
     print(
-        f"  Accuracy: {acc_scores.mean()*100:.1f}% "
+        f"  Accuracy:          {acc_scores.mean()*100:.1f}% "
         f"± {acc_scores.std()*100:.1f}%"
     )
-
     print(
-        f"  Kappa:    {kappa_scores.mean():.3f} "
+        f"  Kappa:             {kappa_scores.mean():.3f} "
         f"± {kappa_scores.std():.3f}"
     )
-
     print(f"  Balanced Accuracy: {balanced_acc*100:.1f}%")
     print(f"  Weighted F1-Score: {f1:.3f}")
 
@@ -275,19 +349,16 @@ def train_pipeline(X, y, classifier_name):
     # Avaliação automática da qualidade
     # ----------------------------------------------------------
 
-    mean_acc = acc_scores.mean()
+    mean_acc   = acc_scores.mean()
     mean_kappa = kappa_scores.mean()
 
     print("\n  Avaliação do modelo:")
-
     if mean_acc >= 0.75 and mean_kappa >= 0.4:
         print("   ✓ Modelo com boa qualidade.")
         print("   ✓ Aquisição provavelmente suficiente.")
-
     elif mean_acc >= 0.65:
         print("   ⚠ Modelo utilizável mas instável.")
         print("   ⚠ Recomenda-se repetir aquisição se possível.")
-
     else:
         print("   ✗ Performance fraca.")
         print("   ✗ Repetir aquisição recomendado.")
@@ -299,19 +370,15 @@ def train_pipeline(X, y, classifier_name):
     clf.fit(X, y)
 
     return clf, {
-        "acc_mean": float(acc_scores.mean()),
-        "acc_std": float(acc_scores.std()),
-
-        "kappa_mean": float(kappa_scores.mean()),
-        "kappa_std": float(kappa_scores.std()),
-
-        "balanced_accuracy": float(balanced_acc),
-        "f1_score": float(f1),
-
+        "acc_mean":              float(acc_scores.mean()),
+        "acc_std":               float(acc_scores.std()),
+        "kappa_mean":            float(kappa_scores.mean()),
+        "kappa_std":             float(kappa_scores.std()),
+        "balanced_accuracy":     float(balanced_acc),
+        "f1_score":              float(f1),
         "classification_report": report,
-
-        "y_true": y,
-        "y_pred": y_pred_cv
+        "y_true":                y,
+        "y_pred":                y_pred_cv,
     }
 
 
@@ -323,13 +390,12 @@ def save_confusion_matrices(results, session_path):
     """
     Gera e guarda uma figura com as 3 confusion matrices em linha.
     """
-
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
     configs = [
-        ("gating",    ["REST",      "ACTIVE"],    "Reds",   "GATING: Rest vs Active"),
-        ("axis",      ["Mãos",      "Pés"],        "Blues",  "AXIS: Mãos vs Pés"),
-        ("direction", ["Esquerda",  "Direita"],    "Greens", "DIRECTION: Esq vs Dir"),
+        ("gating",    ["REST",     "ACTIVE"],  "Reds",   "GATING: Rest vs Active"),
+        ("axis",      ["Mãos",     "Pés"],     "Blues",  "AXIS: Mãos vs Pés"),
+        ("direction", ["Esquerda", "Direita"], "Greens", "DIRECTION: Esq vs Dir"),
     ]
 
     for ax, (key, labels, cmap, title) in zip(axes, configs):
@@ -361,7 +427,6 @@ def train_subject_model(session_path):
     Pipeline completo de treino para um sujeito.
     Recebe o caminho da pasta da sessão e guarda lá os três modelos.
     """
-
     print("\n" + "=" * 60)
     print("TRAINING SUBJECT-SPECIFIC MODEL")
     print(f"Session: {session_path}")
@@ -381,11 +446,34 @@ def train_subject_model(session_path):
 
     # ----------------------------------------------------------
     # 2. Build MNE Raw
+    #
+    # eeg_start_unix é o timestamp Unix da 1ª amostra do EEG.
+    # É a âncora temporal para todos os cálculos de alinhamento.
     # ----------------------------------------------------------
 
     print("\n[2/5] A construir objeto MNE Raw...")
 
-    raw = build_mne_raw(eeg_df, metadata)
+    raw, eeg_start_unix = build_mne_raw(eeg_df, metadata)
+
+    print(f"  EEG start (Unix): {eeg_start_unix:.3f} s")
+    print(f"  Markers range:    {markers['timestamp'].min():.3f} "
+          f"– {markers['timestamp'].max():.3f} s")
+
+    # Verificação de sanidade: todos os markers devem estar dentro do registo
+    eeg_end_unix = eeg_start_unix + (len(eeg_df) - 1) / sfreq
+    markers_before = (markers["timestamp"] < eeg_start_unix).sum()
+    markers_after  = (markers["timestamp"] > eeg_end_unix).sum()
+
+    if markers_before > 0:
+        print(
+            f"  ⚠ ATENÇÃO: {markers_before} marker(s) com timestamp "
+            f"ANTES do início do EEG! Verifica a sincronização."
+        )
+    if markers_after > 0:
+        print(
+            f"  ⚠ ATENÇÃO: {markers_after} marker(s) com timestamp "
+            f"DEPOIS do fim do EEG! Verifica a sincronização."
+        )
 
     # ----------------------------------------------------------
     # 3. Preprocess
@@ -396,7 +484,7 @@ def train_subject_model(session_path):
     raw = preprocess_raw(raw)
 
     # ----------------------------------------------------------
-    # 4. Extrair labels do config
+    # 4. Extrair labels do config e treinar classificadores
     # ----------------------------------------------------------
 
     print("\n[4/5] A extrair épocas e treinar classificadores...")
@@ -410,20 +498,18 @@ def train_subject_model(session_path):
 
     # ----------------------------------------------------------
     # [1] GATING: REST (0) vs ACTIVE (1)
-    #
-    # REST é o label 0 do protocolo.
-    # ACTIVE agrupa LEFT + RIGHT + FEET — tudo o que não é repouso.
     # ----------------------------------------------------------
 
     gating_filter = {
-        rest_label:  0,  # REST   → classe 0
-        left_label:  1,  # LEFT   → ACTIVE (classe 1)
-        right_label: 1,  # RIGHT  → ACTIVE (classe 1)
-        feet_label:  1,  # FEET   → ACTIVE (classe 1)
+        rest_label:  0,
+        left_label:  1,
+        right_label: 1,
+        feet_label:  1,
     }
 
-    X_gate, y_gate = build_epochs(raw, markers, sfreq, gating_filter)
-
+    X_gate, y_gate = build_epochs(
+        raw, markers, sfreq, gating_filter, eeg_start_unix
+    )
     clf_gate, gate_metrics = train_pipeline(X_gate, y_gate, "GATING (Rest vs Active)")
 
     # ----------------------------------------------------------
@@ -431,13 +517,14 @@ def train_subject_model(session_path):
     # ----------------------------------------------------------
 
     axis_filter = {
-        left_label:  0,  # LEFT  → HANDS (classe 0)
-        right_label: 0,  # RIGHT → HANDS (classe 0)
-        feet_label:  1,  # FEET  → FEET  (classe 1)
+        left_label:  0,
+        right_label: 0,
+        feet_label:  1,
     }
 
-    X_axis, y_axis = build_epochs(raw, markers, sfreq, axis_filter)
-
+    X_axis, y_axis = build_epochs(
+        raw, markers, sfreq, axis_filter, eeg_start_unix
+    )
     clf_axis, axis_metrics = train_pipeline(X_axis, y_axis, "AXIS (Mãos vs Pés)")
 
     # ----------------------------------------------------------
@@ -445,12 +532,13 @@ def train_subject_model(session_path):
     # ----------------------------------------------------------
 
     dir_filter = {
-        left_label:  left_label,   # LEFT  → classe 1
-        right_label: right_label,  # RIGHT → classe 2
+        left_label:  left_label,
+        right_label: right_label,
     }
 
-    X_dir, y_dir = build_epochs(raw, markers, sfreq, dir_filter)
-
+    X_dir, y_dir = build_epochs(
+        raw, markers, sfreq, dir_filter, eeg_start_unix
+    )
     clf_dir, dir_metrics = train_pipeline(X_dir, y_dir, "DIRECTION (Esq vs Dir)")
 
     # ----------------------------------------------------------
@@ -475,38 +563,47 @@ def train_subject_model(session_path):
     # Relatório JSON
     report = {
         "session_path": session_path,
+        "alignment": {
+            "eeg_start_unix": eeg_start_unix,
+            "eeg_end_unix":   eeg_end_unix,
+            "markers_min":    float(markers["timestamp"].min()),
+            "markers_max":    float(markers["timestamp"].max()),
+        },
         "gating": {
-            "acc_mean":   gate_metrics["acc_mean"],
-            "acc_std":    gate_metrics["acc_std"],
-            "kappa_mean": gate_metrics["kappa_mean"],
-            "kappa_std":  gate_metrics["kappa_std"],
+            "acc_mean":          gate_metrics["acc_mean"],
+            "acc_std":           gate_metrics["acc_std"],
+            "kappa_mean":        gate_metrics["kappa_mean"],
+            "kappa_std":         gate_metrics["kappa_std"],
             "balanced_accuracy": gate_metrics["balanced_accuracy"],
-            "f1_score": gate_metrics["f1_score"],
+            "f1_score":          gate_metrics["f1_score"],
         },
         "axis": {
-            "acc_mean":   axis_metrics["acc_mean"],
-            "acc_std":    axis_metrics["acc_std"],
-            "kappa_mean": axis_metrics["kappa_mean"],
-            "kappa_std":  axis_metrics["kappa_std"],
+            "acc_mean":          axis_metrics["acc_mean"],
+            "acc_std":           axis_metrics["acc_std"],
+            "kappa_mean":        axis_metrics["kappa_mean"],
+            "kappa_std":         axis_metrics["kappa_std"],
+            "balanced_accuracy": axis_metrics["balanced_accuracy"],
+            "f1_score":          axis_metrics["f1_score"],
         },
         "direction": {
-            "acc_mean":   dir_metrics["acc_mean"],
-            "acc_std":    dir_metrics["acc_std"],
-            "kappa_mean": dir_metrics["kappa_mean"],
-            "kappa_std":  dir_metrics["kappa_std"],
+            "acc_mean":          dir_metrics["acc_mean"],
+            "acc_std":           dir_metrics["acc_std"],
+            "kappa_mean":        dir_metrics["kappa_mean"],
+            "kappa_std":         dir_metrics["kappa_std"],
+            "balanced_accuracy": dir_metrics["balanced_accuracy"],
+            "f1_score":          dir_metrics["f1_score"],
         },
         "params": {
-            "n_csp":   N_CSP,
-            "l_freq":  L_FREQ,
-            "h_freq":  H_FREQ,
-            "tmin":    TMIN,
-            "tmax":    TMAX,
-            "n_folds": N_FOLDS,
+            "n_csp":      N_CSP,
+            "l_freq":     L_FREQ,
+            "h_freq":     H_FREQ,
+            "epoch_tmin": EPOCH_TMIN,
+            "epoch_tmax": EPOCH_TMAX,
+            "n_folds":    N_FOLDS,
         }
     }
 
     report_path = os.path.join(session_path, "training_report.json")
-
     with open(report_path, "w") as f:
         json.dump(report, f, indent=4)
 

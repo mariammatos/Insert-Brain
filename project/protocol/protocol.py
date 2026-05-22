@@ -2,6 +2,7 @@
 # FILE: protocol/protocol.py
 # ============================================================
 
+import time
 import random
 
 from psychopy import visual
@@ -19,7 +20,14 @@ class MotorImageryProtocol:
 
         self.logger = logger
 
-        self.clock = core.Clock()
+        # Guardar o offset Unix no exacto momento em que o Clock é criado.
+        # Permite converter qualquer self.clock.getTime() para Unix time:
+        #   unix_ts = self.clock_unix_offset + self.clock.getTime()
+        #
+        # É crítico que as duas linhas abaixo sejam consecutivas e sem
+        # nenhum código entre elas, para minimizar o erro de medição.
+        self.clock             = core.Clock()
+        self.clock_unix_offset = time.time()
 
         self.win = visual.Window(
             size=(1200, 800),
@@ -31,6 +39,20 @@ class MotorImageryProtocol:
         self.stimuli = Stimuli(self.win)
 
         self.trials = self.generate_trials()
+
+    # ========================================================
+    # HELPER: converter tempo do Clock para Unix time
+    # ========================================================
+
+    def to_unix(self, clock_time):
+        """
+        Converte um timestamp de self.clock.getTime() para Unix time,
+        usando o offset calculado no __init__.
+
+        O pequeno erro entre as duas chamadas (~microsegundos) é
+        desprezável para EEG a 250 Hz (resolução de 4 ms).
+        """
+        return self.clock_unix_offset + clock_time
 
     # ========================================================
     # SAFETY EXIT
@@ -90,7 +112,7 @@ class MotorImageryProtocol:
         start = self.clock.getTime()
 
         self.logger.add_marker(
-            start,
+            self.to_unix(start),
             "baseline_open_start",
             -1
         )
@@ -104,7 +126,7 @@ class MotorImageryProtocol:
         end = self.clock.getTime()
 
         self.logger.add_marker(
-            end,
+            self.to_unix(end),
             "baseline_open_end",
             -1
         )
@@ -125,7 +147,7 @@ class MotorImageryProtocol:
         start = self.clock.getTime()
 
         self.logger.add_marker(
-            start,
+            self.to_unix(start),
             "baseline_closed_start",
             -1
         )
@@ -139,7 +161,7 @@ class MotorImageryProtocol:
         end = self.clock.getTime()
 
         self.logger.add_marker(
-            end,
+            self.to_unix(end),
             "baseline_closed_end",
             -1
         )
@@ -180,7 +202,7 @@ class MotorImageryProtocol:
         cue_start = self.clock.getTime()
 
         self.logger.add_marker(
-            cue_start,
+            self.to_unix(cue_start),
             "cue_on",
             label
         )
@@ -201,7 +223,7 @@ class MotorImageryProtocol:
         mi_start = self.clock.getTime()
 
         self.logger.add_marker(
-            mi_start,
+            self.to_unix(mi_start),
             "mi_start",
             label
         )
@@ -222,7 +244,7 @@ class MotorImageryProtocol:
         mi_end = self.clock.getTime()
 
         self.logger.add_marker(
-            mi_end,
+            self.to_unix(mi_end),
             "mi_end",
             label
         )
