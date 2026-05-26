@@ -156,7 +156,7 @@ def plot_session(session_path):
     channel_names = [f"ch_{i}" for i in range(n_plot)]
 
     # Tenta nomes 10-20 se tiver 8 ou 16 canais
-    names_8  = ["Fp1", "Fp2", "C3", "C4", "P7", "P8", "O1", "O2"]
+    names_8  = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"] # from train_subject_model.py, inside function build_mne_raw
     names_16 = [
         "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8",
         "FC3", "FC4", "C3", "Cz", "C4", "CP3", "CP4", "P3", "P4"

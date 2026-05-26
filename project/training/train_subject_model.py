@@ -60,7 +60,7 @@ H_FREQ      = 30.0
 # A âncora temporal (início do EEG) é sempre calculada a partir do CSV.
 # Janela relativa ao início da motor imagery
 EPOCH_TMIN = 0.5
-EPOCH_TMAX = 3.0
+EPOCH_TMAX = 4.5
 
 N_CSP       = 4
 RANDOM_SEED = 42
@@ -120,7 +120,7 @@ def build_mne_raw(eeg_df, metadata):
     """
     sfreq = metadata["sampling_rate"]
 
-    # Nomes dos canais OpenBCI Cyton+Daisy (16 canais)
+    # Nomes dos canais OpenBCI Cyton+Daisy (8 canais)
     CHANNEL_NAMES = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"]
 
     n_ch     = len(metadata["eeg_channels"])
@@ -469,7 +469,7 @@ def train_subject_model(session_path):
     # 3. Preprocess
     # ----------------------------------------------------------
 
-    print("\n[3/5] A pré-processar (filtro + ICA)...")
+    print("\n[3/5] A pré-processar (filtro bandpass)...")
 
     raw = preprocess_raw(raw)
 

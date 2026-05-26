@@ -26,7 +26,7 @@ from config import CONFIG
 # ============================================================
 
 # Janela de classificação — deve ser igual ao EPOCH_TMAX do treino
-WINDOW_SEC  = 2.0
+WINDOW_SEC  = 4.0
 
 # Guarda um pouco mais de sinal antes da janela para o filtro
 # não ter artefactos de borda na região que interessa
@@ -66,7 +66,7 @@ RESET  = "\033[0m"
 # FILTRO
 # ============================================================
 
-def make_bandpass(l_freq, h_freq, sfreq, order=4):
+def make_bandpass(l_freq, h_freq, sfreq, order=8):
     """
     Cria um filtro Butterworth passa-banda como second-order sections.
     Mesmo intervalo de frequências usado no treino (8-30 Hz).
