@@ -58,8 +58,9 @@ H_FREQ      = 30.0
 # Janela de extração relativa ao onset do cue (segundos).
 # EPOCH_TMIN / EPOCH_TMAX são usados APENAS para definir as Epochs do MNE.
 # A âncora temporal (início do EEG) é sempre calculada a partir do CSV.
-EPOCH_TMIN  = 0.5   # segundos após onset do cue
-EPOCH_TMAX  = 2.5   # segundos após onset do cue
+# Janela relativa ao início da motor imagery
+EPOCH_TMIN = 0.5
+EPOCH_TMAX = 3.0
 
 N_CSP       = 4
 RANDOM_SEED = 42
@@ -120,7 +121,7 @@ def build_mne_raw(eeg_df, metadata):
     sfreq = metadata["sampling_rate"]
 
     # Nomes dos canais OpenBCI Cyton+Daisy (16 canais)
-    CHANNEL_NAMES = ["FC3", "FC4", "C3", "C4", "CP3", "CP4", "Cz", "FCz"]
+    CHANNEL_NAMES = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"]
 
     n_ch     = len(metadata["eeg_channels"])
     ch_names = CHANNEL_NAMES[:n_ch]
@@ -138,6 +139,7 @@ def build_mne_raw(eeg_df, metadata):
     raw.set_meas_date(eeg_start_unix)
 
     montage = mne.channels.make_standard_montage("standard_1020")
+    raw.set_eeg_reference("average", verbose=False)
     raw.set_montage(montage, on_missing="ignore", verbose=False)
 
     return raw, eeg_start_unix
@@ -148,23 +150,10 @@ def build_mne_raw(eeg_df, metadata):
 # ============================================================
 
 def preprocess_raw(raw):
-    """
-    Filtragem banda-larga + ICA para remover artefatos musculares.
-    """
-    raw.filter(L_FREQ, H_FREQ, fir_design="firwin", verbose=False)
 
-    ica = ICA(n_components=0.99, random_state=RANDOM_SEED, method="fastica")
-    ica.fit(raw, verbose=False)
-
-    muscle_idx, _ = ica.find_bads_muscle(raw)
-    ica.exclude   = muscle_idx
-
-    if muscle_idx:
-        print(f"  ICA: removidos {len(muscle_idx)} componente(s) muscular(es).")
-    else:
-        print("  ICA: nenhum artefato muscular detectado.")
-
-    ica.apply(raw, verbose=False)
+    raw.filter(L_FREQ, H_FREQ,
+               fir_design="firwin",
+               verbose=False)
 
     return raw
 
@@ -200,7 +189,8 @@ def build_epochs(raw, markers, sfreq, label_filter, eeg_start_unix):
     y : np.ndarray (n_epochs,)
     """
     cue_markers = markers[
-        markers["label"].isin(label_filter.keys())
+        (markers["event"] == "mi_start") &
+        (markers["label"].isin(label_filter.keys()))
     ].copy()
 
     if len(cue_markers) == 0:
