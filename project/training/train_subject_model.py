@@ -154,6 +154,7 @@ def preprocess_raw(raw):
     raw.filter(L_FREQ, H_FREQ,
                fir_design="firwin",
                verbose=False)
+    raw.notch_filter(50.0, verbose=False) 
 
     return raw
 
@@ -257,8 +258,13 @@ def build_epochs(raw, markers, sfreq, label_filter, eeg_start_unix):
     epochs = mne.Epochs(
         raw, events, event_id=event_id_map,
         tmin=EPOCH_TMIN, tmax=EPOCH_TMAX,
-        baseline=None, preload=True, verbose=False
+        baseline=None, preload=True, verbose=False,
+        reject={"eeg": 100e-6}  
     )
+
+    n_dropped = n_valid - len(epochs)           # já tens esta linha mais abaixo — move-a para cá
+    if n_dropped > 0:
+        print(f"  ⚠ {n_dropped} epoch(s) rejeitados (artefacto de amplitude).")
 
     # Verificar se algum epoch foi descartado pelo MNE (fora dos limites)
     n_dropped = n_valid - len(epochs)
