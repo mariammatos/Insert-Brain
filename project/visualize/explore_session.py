@@ -246,7 +246,7 @@ def plot_erd(epochs_per_class, session_path):
     O ERD aparece como descida de potência (azul) após o onset.
     """
 
-    target_chs = ["C3", "C4"]
+    target_chs = ["FC3", "FC4"]
     freqs      = np.arange(6, 35, 1)
     n_cycles   = freqs / 2.0
 
@@ -507,16 +507,18 @@ def plot_raw_epochs(epochs_per_class, session_path):
     Se a média de epochs tiver forma de onda suave é bom sinal.
     """
 
-    target_chs = ["C3", "Cz", "C4"]
+    #target_chs = ["C3", "Cz", "C4"]
+    target_chs = CHANNEL_NAMES
 
-    fig, axes = plt.subplots(1, len(target_chs), figsize=(15, 4), sharey=False)
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8), sharey=False)
     fig.suptitle(
         "Média de epochs por classe (sinal filtrado 8-30Hz)\n"
         "Verifica artefactos: picos, drift, saturação",
         fontsize=11, fontweight="bold"
     )
 
-    for ax, ch_name in zip(axes, target_chs):
+    for i, ch_name in enumerate(target_chs):
+        ax = axes[i // 4, i % 4]
 
         for class_name, ep in epochs_per_class.items():
 
@@ -538,7 +540,7 @@ def plot_raw_epochs(epochs_per_class, session_path):
         ax.axhline(0, color="black", linewidth=0.5, alpha=0.3)
         ax.set_title(ch_name, fontsize=11)
         ax.set_xlabel("Tempo (s)")
-        ax.set_ylabel("Amplitude (µV)" if ch_name == target_chs[0] else "")
+        ax.set_ylabel("Amplitude (µV)" if i % 4 == 0 else "")
         ax.legend(fontsize=7)
         ax.grid(True, alpha=0.3)
 
