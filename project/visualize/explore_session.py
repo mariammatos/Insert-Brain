@@ -42,7 +42,8 @@ EPOCH_TMAX = 4.5    # janela larga para ver o ERD desenvolver-se
 N_CSP      = 4
 RANDOM_SEED = 42
 
-CHANNEL_NAMES = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"]
+#CHANNEL_NAMES = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"]
+CHANNEL_NAMES = ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"]
 
 CLASS_COLORS = {
     "REST":  "#888888",
@@ -91,6 +92,7 @@ def build_raw(eeg_df, metadata):
 
 def filter_raw(raw):
     raw_f = raw.copy().filter(L_FREQ, H_FREQ, fir_design="firwin", verbose=False)
+    raw_f.notch_filter(freqs=[25, 50], verbose=False) 
     return raw_f
 
 
@@ -180,15 +182,16 @@ def plot_spectra(epochs_per_class, sfreq, session_path):
     Mostra onde as classes se separam espectralmente.
     """
 
-    target_chs = ["C3", "Cz", "C4"]
+    #target_chs = ["C3", "Cz", "C4"]
+    target_chs = CHANNEL_NAMES
 
-    fig, axes = plt.subplots(1, len(target_chs), figsize=(15, 4), sharey=False)
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8), sharey=False)
     fig.suptitle("Espectros médios por classe", fontsize=13, fontweight="bold")
 
-    for ax, ch_name in zip(axes, target_chs):
+    for i, ch_name in enumerate(target_chs):
+        ax = axes[i // 4, i % 4]
 
         for class_name, ep in epochs_per_class.items():
-
             if ch_name not in ep.ch_names:
                 continue
 
@@ -222,7 +225,7 @@ def plot_spectra(epochs_per_class, sfreq, session_path):
 
         ax.set_title(ch_name, fontsize=11)
         ax.set_xlabel("Frequência (Hz)")
-        ax.set_ylabel("PSD (V²/Hz)" if ch_name == target_chs[0] else "")
+        ax.set_ylabel("PSD (V²/Hz)" if i % 4 == 0 else "")
         ax.legend(fontsize=7)
         ax.grid(True, alpha=0.3)
 
