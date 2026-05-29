@@ -121,7 +121,9 @@ def build_mne_raw(eeg_df, metadata):
     sfreq = metadata["sampling_rate"]
 
     # Nomes dos canais OpenBCI Cyton+Daisy (8 canais)
-    CHANNEL_NAMES = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"]
+    #CHANNEL_NAMES = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"]
+    CHANNEL_NAMES = ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"]
+
 
     n_ch     = len(metadata["eeg_channels"])
     ch_names = CHANNEL_NAMES[:n_ch]
@@ -154,7 +156,7 @@ def preprocess_raw(raw):
     raw.filter(L_FREQ, H_FREQ,
                fir_design="firwin",
                verbose=False)
-    raw.notch_filter(50.0, verbose=False) 
+    raw.notch_filter(freqs=[25, 50], verbose=False) 
 
     return raw
 
@@ -258,8 +260,7 @@ def build_epochs(raw, markers, sfreq, label_filter, eeg_start_unix):
     epochs = mne.Epochs(
         raw, events, event_id=event_id_map,
         tmin=EPOCH_TMIN, tmax=EPOCH_TMAX,
-        baseline=None, preload=True, verbose=False,
-        reject={"eeg": 100e-6}  
+        baseline=None, preload=True, verbose=False
     )
 
     n_dropped = n_valid - len(epochs)           # já tens esta linha mais abaixo — move-a para cá
