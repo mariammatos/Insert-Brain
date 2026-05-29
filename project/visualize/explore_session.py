@@ -284,19 +284,24 @@ def plot_erd(epochs_per_class, session_path):
                     n_cycles=n_cycles,
                     time_bandwidth=2.0,
                     return_itc=False,
+                    average=True,
                     verbose=False
                 )
 
+                # average=True devolve shape (1, n_freqs, n_times) — média sobre epochs
+                pwr = power.data  # shape: (n_channels, n_freqs, n_times)
+                pwr_ch = pwr[0]   # shape: (n_freqs, n_times) — primeiro (único) canal
+
                 # Baseline: média dos primeiros 0.5s após EPOCH_TMIN
-                baseline_mask  = (power.times >= EPOCH_TMIN) & (power.times < EPOCH_TMIN + 0.5)
-                baseline_power = power.data[0, :, baseline_mask].mean(axis=-1, keepdims=True)
-                erd            = 10 * np.log10(power.data[0] / (baseline_power + 1e-30))
+                baseline_mask  = (power.times >= power.times[0]) & (power.times < power.times[0] + 0.5)
+                baseline_power = pwr_ch[:, baseline_mask].mean(axis=-1, keepdims=True)
+                erd            = 10 * np.log10(pwr_ch / (baseline_power + 1e-30))
 
                 im = ax.imshow(
                     erd,
                     aspect="auto",
                     origin="lower",
-                    extent=[power.times[0], power.times[-1], freqs[0], freqs[-1]],
+                    extent=[power.times[0] - EPOCH_TMIN, power.times[-1] - EPOCH_TMIN, freqs[0], freqs[-1]],
                     vmin=-3, vmax=3,
                     cmap="RdBu_r"
                 )
@@ -313,8 +318,11 @@ def plot_erd(epochs_per_class, session_path):
             ax.set_ylabel("Freq (Hz)" if col == 0 else "")
 
     if im is not None:
-        plt.colorbar(im, ax=axes, label="ERD (dB)", shrink=0.6)
-    plt.tight_layout()
+        fig.subplots_adjust(right=0.88, hspace=0.4)   # abre espaço à direita
+        cbar_ax = fig.add_axes([0.91, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+        fig.colorbar(im, cax=cbar_ax, label="ERD (dB)")
+    else:
+        plt.tight_layout()
     path = os.path.join(session_path, "explore_erd.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
