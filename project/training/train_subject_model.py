@@ -265,13 +265,9 @@ def build_epochs(raw, markers, sfreq, label_filter, eeg_start_unix):
 
     n_dropped = n_valid - len(epochs)           # já tens esta linha mais abaixo — move-a para cá
     if n_dropped > 0:
-        print(f"  ⚠ {n_dropped} epoch(s) rejeitados (artefacto de amplitude).")
-
-    # Verificar se algum epoch foi descartado pelo MNE (fora dos limites)
-    n_dropped = n_valid - len(epochs)
-    if n_dropped > 0:
         print(
-            f"  ⚠ {n_dropped} epoch(s) descartados pelo MNE "
+            f"  ⚠ {n_dropped} epoch(s) rejeitados (artefacto de amplitude)."
+            f"  ⚠ {n_dropped} epoch(s) descartados pelo MNE " # Verificar se algum epoch foi descartado pelo MNE (fora dos limites)
             f"(provavelmente próximos do fim do registo)."
         )
 
