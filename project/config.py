@@ -19,7 +19,7 @@ CONFIG = {
     # EXPERIMENT SETTINGS
     # ========================================================
 
-    "trials_per_class": 10,
+    "trials_per_class": 5,
 
     "classes": {
         "LEFT":  {"label": 1, "symbol": "←"},
@@ -41,6 +41,6 @@ CONFIG = {
     # BASELINE
     # ========================================================
 
-    "baseline_open":   30,
-    "baseline_closed": 30
+    "baseline_open":   15,
+    "baseline_closed": 15
 }
