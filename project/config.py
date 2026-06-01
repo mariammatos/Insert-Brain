@@ -8,6 +8,9 @@ CONFIG = {
 
     "participant_id": "P001",
 
+    # WE STILL NEED TO CHANGE THIS IN OTHER FILES, EACH FILE HAS SPECIFIC CHANNELS
+    "channel_names": ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"],
+
     # ========================================================
     # BOARD CONFIGURATION
     # ========================================================
@@ -19,13 +22,11 @@ CONFIG = {
     # EXPERIMENT SETTINGS
     # ========================================================
 
-    "trials_per_class": 5,
-
     "classes": {
-        "LEFT":  {"label": 1, "symbol": "←"},
-        "RIGHT": {"label": 2, "symbol": "→"},
-        "FEET":  {"label": 3, "symbol": "↓"},
-        "REST":  {"label": 0, "symbol": "+"}
+        "LEFT":  {"label": 1, "symbol": "←", "trials": 1},
+        "RIGHT": {"label": 2, "symbol": "→", "trials": 1},
+        "FEET":  {"label": 3, "symbol": "↓", "trials": 2},
+        "REST":  {"label": 0, "symbol": "+", "trials": 4},
     },
 
     # ========================================================

@@ -80,10 +80,7 @@ class MotorImageryProtocol:
 
         for class_name in self.config["classes"]:
 
-            for _ in range(
-                self.config["trials_per_class"]
-            ):
-
+            for _ in range(self.config["classes"][class_name].get("trials")):
                 trials.append(class_name)
 
         random.shuffle(trials)
