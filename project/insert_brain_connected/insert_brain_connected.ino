@@ -27,15 +27,15 @@ Servo Servo_2;
 Servo Servo_3;
 
 // Posições actuais
-int M0 = 90, M1 = 90, M2 = 90, M3 = 130;
+int M0 = 90, M1 = 90, M2 = 90, M3 = 160;
 
 // Limites de ângulo
 int minAngle[4]    = {10,  10,  10,  100};
 int maxAngle[4]    = {170, 170, 170, 170};
-int neutralAngle[4] = {90,  90,  90,  130};
+int neutralAngle[4] = {90,  90,  90,  160};
 
 // Graus por passo de comando
-int stepSize = 10;
+int stepSize = 5;
 
 // Servo actualmente seleccionado pelo BCI (índice 0-3)
 int activeServo = 0;
