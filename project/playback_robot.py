@@ -10,10 +10,11 @@
 #              classifica → envia comando ao robô
 #   mi_end   → mostra resultado, aguarda próximo cue
 #
-# Pré-processamento idêntico ao treino (MNE):
+# Pré-processamento idêntico ao treino (MNE) — igual ao evaluate_classifier:
 #   1. Referência average
-#   2. Notch FIR 50 Hz  (filtfilt → zero-phase)
-#   3. Bandpass FIR 8–30 Hz  (filtfilt → zero-phase)
+#   2. Bandpass FIR 8–30 Hz  (MNE firwin)
+#   3. Notch FIR 50 Hz       (MNE)
+#   4. ICA — remoção automática de artefactos musculares
 #
 # Uso:
 #   python playback_robot.py <session_path> [serial_port] [--no-robot] [--speed N]
@@ -28,9 +29,14 @@ import time
 import joblib
 import collections
 import argparse
+import warnings
 import numpy as np
 import pandas as pd
-from scipy.signal import firwin, filtfilt
+import mne
+from mne.preprocessing import ICA
+
+warnings.filterwarnings("ignore")
+mne.set_log_level("ERROR")
 
 try:
     import serial
@@ -46,17 +52,18 @@ except Exception:
 
 
 # ============================================================
-# PARÂMETROS
+# PARÂMETROS — têm de coincidir com o treino e com o evaluate
 # ============================================================
 
 # Janela de MI relativa ao mi_start — igual ao treino
 EPOCH_TMIN = 1.0    # segundos após mi_start (settling)
 EPOCH_TMAX = 3.5    # segundos após mi_start
 
-# Filtro — igual ao treino
+# Filtro — igual ao treino e ao evaluate_classifier
 L_FREQ     = 8.0
 H_FREQ     = 30.0
 NOTCH_FREQ = 50.0
+RANDOM_SEED = 42
 
 ROBOT_BAUD     = 9600
 PLAYBACK_SPEED = 1.0   # 1.0 = tempo real | 2.0 = 2× | 0 = máximo
@@ -85,53 +92,30 @@ CLASS_BG    = {0: "\033[100m", 1: "\033[44m", 2: "\033[45m", 3: "\033[43m\033[30
 
 
 # ============================================================
-# FILTROS FIR — zero-phase (filtfilt), idêntico ao MNE
+# PRÉ-PROCESSAMENTO MNE — idêntico ao evaluate_classifier
 # ============================================================
 
-def _fir_order(sfreq, l_freq=None, h_freq=None):
-    """Ordem do FIR como o MNE calcula internamente."""
-    if l_freq is not None and h_freq is not None:
-        trans = min(l_freq, sfreq / 2.0 - h_freq) * 0.25
-    elif l_freq is not None:
-        trans = l_freq * 0.25
-    else:
-        trans = (sfreq / 2.0 - h_freq) * 0.25
-    trans = max(trans, 0.5)
-    order = int(np.ceil(6.6 * sfreq / trans))
-    if order % 2 == 0:
-        order += 1
-    return order
+def preprocess_mne(eeg, sfreq, ch_names):
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
+    raw  = mne.io.RawArray(eeg, info, verbose=False)
 
-def make_bandpass(l_freq, h_freq, sfreq):
-    order = _fir_order(sfreq, l_freq, h_freq)
-    nyq   = sfreq / 2.0
-    return firwin(order + 1, [l_freq / nyq, h_freq / nyq],
-                  pass_zero=False, window="hamming")
+    montage = mne.channels.make_standard_montage("standard_1005")
+    raw.set_montage(montage, on_missing="ignore", verbose=False)
 
-def make_notch(notch_freq, sfreq, bw=2.0):
-    order = _fir_order(sfreq, notch_freq - bw / 2, notch_freq + bw / 2)
-    if order % 2 != 0:   # band-stop precisa de order par → n_taps ímpar
-        order += 1
-    nyq = sfreq / 2.0
-    return firwin(order + 1,
-                  [(notch_freq - bw / 2) / nyq, (notch_freq + bw / 2) / nyq],
-                  pass_zero=True, window="hamming")
+    raw.set_eeg_reference("average", verbose=False)
+    raw.filter(L_FREQ, H_FREQ, fir_design="firwin", verbose=False)
+    raw.notch_filter(freqs=NOTCH_FREQ, method="fir", verbose=False)
 
-def apply_filtfilt(eeg, b):
-    """eeg: (n_ch, n_samples) → filtrado com zero-phase"""
-    return np.array([filtfilt(b, 1.0, ch) for ch in eeg])
+    n_components = min(len(ch_names) - 1, 7)
+    ica = ICA(n_components=n_components, random_state=RANDOM_SEED,
+              method="fastica", max_iter=500)
+    ica.fit(raw, verbose=False)
+    muscle_idx, _ = ica.find_bads_muscle(raw, verbose=False)
+    if muscle_idx:
+        ica.exclude = muscle_idx
+        ica.apply(raw, verbose=False)
 
-def preprocess(eeg, b_notch, b_bp):
-    """
-    Pipeline idêntico ao treino:
-      1. Referência average
-      2. Notch 50 Hz (filtfilt)
-      3. Bandpass 8–30 Hz (filtfilt)
-    """
-    eeg = eeg - eeg.mean(axis=0, keepdims=True)   # avg ref
-    eeg = apply_filtfilt(eeg, b_notch)             # notch
-    eeg = apply_filtfilt(eeg, b_bp)                # bandpass
-    return eeg
+    return raw
 
 
 # ============================================================
@@ -190,24 +174,32 @@ def extract_epoch(eeg_proc, times, t_start, t_end):
     Extrai amostras de eeg_proc entre t_start e t_end.
     Devolve (n_ch, n_samples) ou None se fora dos limites.
     """
-    mask  = (times >= t_start) & (times <= t_end)
+    mask = (times >= t_start) & (times <= t_end)
     if mask.sum() < 2:
         return None
     return eeg_proc[:, mask]
 
 
 # ============================================================
-# CLASSIFICAÇÃO
+# CLASSIFICAÇÃO — idêntica ao evaluate_classifier
+# Usa classes_ reais do modelo — robusto a qualquer mapeamento
+# de IDs interno do MNE.
 # ============================================================
 
 def classify(epoch, clf_gate, clf_axis, clf_dir):
     """epoch: (n_ch, n_samples) → label 0–3"""
     w = epoch[np.newaxis, :, :]           # (1, n_ch, n_samples)
+
     if clf_gate.predict(w)[0] == 0:
         return 0
-    if clf_axis.predict(w)[0] == 1:
+
+    feet_label = clf_axis.classes_[1]
+    if clf_axis.predict(w)[0] == feet_label:
         return 3
-    return int(clf_dir.predict(w)[0])
+
+    pred_dir   = clf_dir.predict(w)[0]
+    left_label = clf_dir.classes_[0]
+    return 1 if pred_dir == left_label else 2
 
 
 # ============================================================
@@ -256,7 +248,7 @@ def print_header(session_path, robot_connected, sfreq, total_events, ev_idx):
     print(f"  {DIM}{session_path}{RESET}")
     rob_s = f"{GREEN}● robô ligado{RESET}" if robot_connected else f"{DIM}○ sem robô{RESET}"
     print(f"  {rob_s}   {DIM}{sfreq:.0f}Hz · época [{EPOCH_TMIN}–{EPOCH_TMAX}s] · "
-          f"FIR {L_FREQ}–{H_FREQ}Hz · notch {NOTCH_FREQ}Hz{RESET}")
+          f"avg ref → FIR {L_FREQ}–{H_FREQ}Hz → notch {NOTCH_FREQ}Hz → ICA{RESET}")
     print(f"  Evento {ev_idx} / {total_events}")
     print(f"{BOLD}{'═' * 62}{RESET}\n")
 
@@ -331,18 +323,24 @@ def run(session_path, robot_port=None, no_robot=False):
 
     clf_gate, clf_axis, clf_dir = load_models(session_path)
     print(f"{GREEN}✓ Modelos carregados{RESET}")
+    print(f"  gate  classes: {clf_gate.classes_}")
+    print(f"  axis  classes: {clf_axis.classes_}  "
+          f"(Mãos={clf_axis.classes_[0]}, Pés={clf_axis.classes_[1]})")
+    print(f"  dir   classes: {clf_dir.classes_}  "
+          f"(LEFT={clf_dir.classes_[0]}, RIGHT={clf_dir.classes_[1]})")
 
     eeg, times, markers, sfreq, ch_cols = load_session(session_path)
     print(f"{GREEN}✓ EEG: {eeg.shape[0]} canais × {eeg.shape[1]} amostras "
           f"@ {sfreq:.1f}Hz  ({times[-1]:.1f}s){RESET}")
     print(f"{GREEN}✓ Markers: {len(markers)} linhas{RESET}")
 
-    # Filtros e pré-processamento
-    print(f"{DIM}A pré-processar EEG...{RESET}", end="", flush=True)
-    b_notch = make_notch(NOTCH_FREQ, sfreq)
-    b_bp    = make_bandpass(L_FREQ, H_FREQ, sfreq)
-    eeg_proc = preprocess(eeg, b_notch, b_bp)
-    print(f"\r{GREEN}✓ EEG pré-processado (avg ref → notch {NOTCH_FREQ}Hz → bandpass {L_FREQ}–{H_FREQ}Hz){RESET}")
+    # Pré-processamento MNE — idêntico ao evaluate_classifier
+    print(f"{DIM}A pré-processar EEG (avg ref → bandpass → notch → ICA)...{RESET}",
+          end="", flush=True)
+    raw      = preprocess_mne(eeg, sfreq, ch_cols)
+    eeg_proc = raw.get_data()
+    print(f"\r{GREEN}✓ EEG pré-processado (avg ref → FIR {L_FREQ}–{H_FREQ}Hz → "
+          f"notch {NOTCH_FREQ}Hz → ICA){RESET}")
 
     # Eventos relevantes: pares (cue_on, mi_start, mi_end, label)
     cues   = markers[markers["event"] == "cue_on"].sort_values("timestamp").reset_index(drop=True)
@@ -460,7 +458,7 @@ def run(session_path, robot_port=None, no_robot=False):
         print(f"\n  {'Classe':<10} {'Predições':>10} {'Corretas':>10}")
         print(f"  {'─' * 34}")
         for label in [1, 2, 3, 0]:
-            n_p = stats[label]
+            n_p  = stats[label]
             n_ok = sum(1 for e in history if e["pred"] == label and e["gt"] == label)
             col  = CLASS_COLOR.get(label, RESET)
             acc_ = f"({n_ok/n_p*100:.0f}%)" if n_p > 0 else ""
