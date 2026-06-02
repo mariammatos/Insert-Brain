@@ -1,0 +1,41 @@
+{
+    "session_path": "data\\Afonso3F_20260602_124216",
+    "alignment": {
+        "eeg_start_unix": 1780400539.1153798,
+        "eeg_end_unix": 1780401028.9273798,
+        "markers_min": 1780400545.5284483,
+        "markers_max": 1780401021.3601017
+    },
+    "gating": {
+        "acc_mean": 0.525,
+        "acc_std": 0.1457737973711325,
+        "kappa_mean": 0.05,
+        "kappa_std": 0.29154759474226505,
+        "balanced_accuracy": 0.525,
+        "f1_score": 0.5223130106851037
+    },
+    "axis": {
+        "acc_mean": 0.85,
+        "acc_std": 0.2,
+        "kappa_mean": 0.7,
+        "kappa_std": 0.4,
+        "balanced_accuracy": 0.8500000000000001,
+        "f1_score": 0.849624060150376
+    },
+    "direction": {
+        "acc_mean": 0.5,
+        "acc_std": 0.31622776601683794,
+        "kappa_mean": 0.0,
+        "kappa_std": 0.6324555320336759,
+        "balanced_accuracy": 0.5,
+        "f1_score": 0.494949494949495
+    },
+    "params": {
+        "n_csp": 4,
+        "l_freq": 8.0,
+        "h_freq": 30.0,
+        "epoch_tmin": 0.5,
+        "epoch_tmax": 4.5,
+        "n_folds": 5
+    }
+}
