@@ -1,0 +1,39 @@
+{
+    "sampling_rate": 160.0,
+    "eeg_channels": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+    ],
+    "classes": {
+        "REST": {
+            "label": 0,
+            "symbol": "+"
+        },
+        "LEFT": {
+            "label": 1,
+            "symbol": "\u2190"
+        },
+        "RIGHT": {
+            "label": 2,
+            "symbol": "\u2192"
+        },
+        "FEET": {
+            "label": 3,
+            "symbol": "\u2193"
+        }
+    },
+    "fixation_time": 2.0,
+    "cue_time": 2.0,
+    "imagery_time": 4.0,
+    "rest_time": 2.0,
+    "baseline_open": 0,
+    "baseline_closed": 0,
+    "holdout_fraction": 0.2,
+    "note": "Sess\u00e3o gerada EXCLUSIVAMENTE com dados holdout (n\u00e3o vistos pelo modelo)."
+}
