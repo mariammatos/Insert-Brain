@@ -9,7 +9,7 @@ CONFIG = {
     "participant_id": "P001",
 
     # WE STILL NEED TO CHANGE THIS IN OTHER FILES, EACH FILE HAS SPECIFIC CHANNELS
-    "channel_names": ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"],
+    "channel_names": ["C3", "C4", "Cz", "FC3", "FC4", "CP3", "CP4", "FCz"], # don't forget the gel on GND and REF!!
 
     # ========================================================
     # BOARD CONFIGURATION
@@ -23,10 +23,10 @@ CONFIG = {
     # ========================================================
 
     "classes": {
-        "LEFT":  {"label": 1, "symbol": "←", "trials": 1},
-        "RIGHT": {"label": 2, "symbol": "→", "trials": 1},
-        "FEET":  {"label": 3, "symbol": "↓", "trials": 2},
-        "REST":  {"label": 0, "symbol": "+", "trials": 4},
+        "LEFT":  {"label": 1, "symbol": "←", "trials": 5},
+        "RIGHT": {"label": 2, "symbol": "→", "trials": 5},
+        "FEET":  {"label": 3, "symbol": "↓", "trials": 10},
+        "REST":  {"label": 0, "symbol": "+", "trials": 20},
     },
 
     # ========================================================
