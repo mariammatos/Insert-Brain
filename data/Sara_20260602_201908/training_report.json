@@ -1,0 +1,41 @@
+{
+    "session_path": "data\\Sara3_20260602_201908",
+    "alignment": {
+        "eeg_start_unix": 1780427951.3271704,
+        "eeg_end_unix": 1780428443.8391705,
+        "markers_min": 1780427962.559052,
+        "markers_max": 1780428436.484868
+    },
+    "gating": {
+        "acc_mean": 0.625,
+        "acc_std": 0.13693063937629152,
+        "kappa_mean": 0.25,
+        "kappa_std": 0.27386127875258304,
+        "balanced_accuracy": 0.625,
+        "f1_score": 0.6228786926461346
+    },
+    "axis": {
+        "acc_mean": 0.6,
+        "acc_std": 0.25495097567963926,
+        "kappa_mean": 0.2,
+        "kappa_std": 0.5099019513592785,
+        "balanced_accuracy": 0.6,
+        "f1_score": 0.5959595959595959
+    },
+    "direction": {
+        "acc_mean": 0.6,
+        "acc_std": 0.2,
+        "kappa_mean": 0.2,
+        "kappa_std": 0.4000000000000001,
+        "balanced_accuracy": 0.6000000000000001,
+        "f1_score": 0.5833333333333333
+    },
+    "params": {
+        "n_csp": 4,
+        "l_freq": 8.0,
+        "h_freq": 30.0,
+        "epoch_tmin": 0.5,
+        "epoch_tmax": 4.5,
+        "n_folds": 5
+    }
+}

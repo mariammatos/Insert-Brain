@@ -9,7 +9,7 @@ CONFIG = {
     "participant_id": "P001",
 
     # WE STILL NEED TO CHANGE THIS IN OTHER FILES, EACH FILE HAS SPECIFIC CHANNELS
-    "channel_names": ["F3", "F4", "C3", "FC4", "FCz", "CP3", "CP4", "CPz"], # don't forget the gel on GND and REF!!
+    "channel_names": ["F3", "F4", "FC4", "C3", "FCz", "CP3", "CP4", "CPz"], # don't forget the gel on GND and REF!!
 
 
     # ========================================================
@@ -17,7 +17,7 @@ CONFIG = {
     # ========================================================
 
     "board_id": BoardIds.CYTON_BOARD.value,  # 8 canais
-    "serial_port": "COM13",
+    "serial_port": "COM8",
 
     # ========================================================
     # EXPERIMENT SETTINGS
