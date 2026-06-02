@@ -7,6 +7,13 @@
 #
 # Uso: python test_model.py <session_path>
 # Ex:  python test_model.py data/P001_20250521_143000
+#
+# PRÉ-PROCESSAMENTO IDÊNTICO AO TREINO (train_subject_model.py):
+#   1. Referência média (average reference)
+#   2. Filtro FIR bandpass 8-30 Hz  (fir_design="firwin", como MNE)
+#   3. Filtro notch 25 Hz e 50 Hz
+#   4. Janela de 4.0 s (= EPOCH_TMAX - EPOCH_TMIN = 4.5 - 0.5)
+#   5. Pipeline CSP → Scaler → LDA (guardado no .pkl, não replicado aqui)
 # ============================================================
 
 import os
@@ -14,7 +21,9 @@ import sys
 import time
 import joblib
 import numpy as np
-from scipy.signal import butter, sosfiltfilt
+from scipy.signal import firwin, sosfilt, sosfiltfilt, butter, iirnotch
+
+import mne
 
 from brainflow.board_shim import BoardShim, BrainFlowInputParams
 
@@ -22,22 +31,23 @@ from config import CONFIG
 
 
 # ============================================================
-# CONFIGURAÇÃO
+# CONFIGURAÇÃO — deve coincidir com train_subject_model.py
 # ============================================================
 
-# Janela de classificação — deve ser igual ao EPOCH_TMAX do treino
-WINDOW_SEC  = 4.0
+L_FREQ   = 8.0
+H_FREQ   = 30.0
+NOTCH_FREQS = [25.0, 50.0]
 
-# Guarda um pouco mais de sinal antes da janela para o filtro
-# não ter artefactos de borda na região que interessa
-FILTER_PAD_SEC = 1.0
+# Janela de classificação = EPOCH_TMAX - EPOCH_TMIN do treino
+WINDOW_SEC = 4.0   # 4.5 - 0.5
+
+# Padding extra para o filtro não ter artefactos de borda
+# na região de interesse. Deve ser >= comprimento do filtro FIR / sfreq.
+# 2 s é seguro para os filtros usados pelo MNE a 250 Hz.
+FILTER_PAD_SEC = 2.0
 
 # Tempo de preparação antes de cada trial (conta decrescente)
 PREP_SEC = 5
-
-# Filtro — deve ser igual ao L_FREQ / H_FREQ do treino
-L_FREQ = 8.0
-H_FREQ = 30.0
 
 SYMBOLS = {
     0: "  +  ",
@@ -63,25 +73,85 @@ RESET  = "\033[0m"
 
 
 # ============================================================
-# FILTRO
+# PRÉ-PROCESSAMENTO — idêntico ao train_subject_model.py
 # ============================================================
 
-def make_bandpass(l_freq, h_freq, sfreq, order=8):
+def make_fir_bandpass(l_freq, h_freq, sfreq):
     """
-    Cria um filtro Butterworth passa-banda como second-order sections.
-    Mesmo intervalo de frequências usado no treino (8-30 Hz).
+    Cria coeficientes FIR bandpass com firwin, igual ao MNE por omissão.
+    Retorna coeficientes b para usar com sosfiltfilt via conversão.
+
+    O MNE usa fir_design="firwin" com transition_bandwidth automático.
+    Aqui replicamos com comprimento de filtro conservador (mesmo que o MNE
+    use para sinais de 250 Hz com estes parâmetros de corte).
     """
-    nyq = sfreq / 2.0
-    sos = butter(order, [l_freq / nyq, h_freq / nyq], btype="band", output="sos")
+    # Comprimento do filtro: MNE usa tipicamente ~0.34 s de dados para
+    # 8 Hz com sfreq=250 → 85 amostras; arredondamos para garantir segurança.
+    # Fórmula MNE: n_taps = int(round(0.34 * sfreq)) | sempre ímpar
+    n_taps = int(round(0.34 * sfreq))
+    if n_taps % 2 == 0:
+        n_taps += 1
+
+    b = firwin(n_taps, [l_freq, h_freq], pass_zero=False, fs=sfreq)
+    return b
+
+
+def make_notch_sos(freq, sfreq, quality=30.0):
+    """
+    Cria filtro notch IIR (biquad) como second-order sections.
+    quality=30 é o valor por omissão do MNE para notch_filter.
+    """
+    b, a = iirnotch(freq, quality, fs=sfreq)
+    # Converte para SOS para estabilidade numérica
+    from scipy.signal import tf2sos
+    sos = tf2sos(b, a)
     return sos
 
 
-def apply_bandpass(eeg, sos):
+def preprocess_window(eeg_raw, sfreq, fir_b, notch_sos_list, n_need, n_total):
     """
-    Aplica filtro passa-banda a (n_ch, n_times).
-    Usa sosfiltfilt (zero-phase, equivalente ao firwin do MNE).
+    Aplica o mesmo pré-processamento do treino a uma janela de EEG em bruto.
+
+    Parameters
+    ----------
+    eeg_raw        : np.ndarray (n_ch, n_samples_total)  — inclui padding
+    sfreq          : float
+    fir_b          : np.ndarray — coeficientes FIR bandpass
+    notch_sos_list : list de np.ndarray — SOS de cada filtro notch
+    n_need         : int — amostras da janela final (sem padding)
+    n_total        : int — amostras totais capturadas (com padding)
+
+    Returns
+    -------
+    window : np.ndarray (1, n_ch, n_need)  — pronto para clf.predict()
+             ou None se não houver amostras suficientes
     """
-    return sosfiltfilt(sos, eeg, axis=1)
+    n_samples = eeg_raw.shape[1]
+
+    if n_samples < n_need:
+        return None
+
+    # Usa as últimas n_total amostras (ou tudo se for menos)
+    n_use = min(n_samples, n_total)
+    eeg   = eeg_raw[:, -n_use:]
+
+    # --- [1] Referência média (average reference) ---
+    # Subtrai a média de todos os canais em cada instante de tempo,
+    # exatamente como raw.set_eeg_reference("average") no MNE.
+    eeg = eeg - eeg.mean(axis=0, keepdims=True)
+
+    # --- [2] Filtro FIR bandpass 8-30 Hz (mesmo que MNE firwin) ---
+    from scipy.signal import filtfilt
+    eeg = filtfilt(fir_b, [1.0], eeg, axis=1)
+
+    # --- [3] Filtro notch (25 Hz e 50 Hz) ---
+    for sos in notch_sos_list:
+        eeg = sosfiltfilt(sos, eeg, axis=1)
+
+    # --- [4] Descarta padding — fica só a janela de classificação ---
+    eeg_window = eeg[:, -n_need:]
+
+    return eeg_window[np.newaxis, :, :]   # (1, n_ch, n_times)
 
 
 # ============================================================
@@ -110,6 +180,11 @@ def load_models(session_path):
 
     print(f"{GREEN}✓ Modelos carregados de {session_path}{RESET}")
 
+    # Confirma que os pipelines têm os passos esperados
+    for name, clf in [("gating", clf_gate), ("axis", clf_axis), ("direction", clf_dir)]:
+        steps = [s for s, _ in clf.steps]
+        print(f"  {name}: pipeline {steps}")
+
     return clf_gate, clf_axis, clf_dir
 
 
@@ -133,7 +208,7 @@ def start_board():
     board.start_stream()
     time.sleep(2)
 
-    print(f"{GREEN}✓ Board ligado | {len(eeg_channels)} canais | {sfreq}Hz{RESET}\n")
+    print(f"{GREEN}✓ Board ligado | {len(eeg_channels)} canais | {sfreq} Hz{RESET}\n")
 
     return board, eeg_channels, timestamp_channel, sfreq
 
@@ -144,24 +219,25 @@ def stop_board(board):
 
 
 # ============================================================
-# CLASSIFY WINDOW
+# ACQUIRE + PRÉ-PROCESSAR + CLASSIFICAR
 # ============================================================
 
-def get_window(board, eeg_channels, sfreq, sos, window_sec, pad_sec):
+def get_window(board, eeg_channels, sfreq,
+               fir_b, notch_sos_list,
+               window_sec, pad_sec):
     """
-    Aguarda window_sec + pad_sec segundos, aplica filtro passa-banda
-    e devolve a janela de EEG no formato (1, n_ch, n_times).
+    Aguarda window_sec + pad_sec segundos, aplica pré-processamento
+    idêntico ao treino e devolve (1, n_ch, n_times).
 
-    pad_sec: segundos extra de sinal capturado antes da janela de interesse,
-             para eliminar artefactos de borda do filtro. São descartados
-             depois de filtrar — apenas a janela final de window_sec é usada.
+    O sinal bruto é em µV (BrainFlow devolve em µV).
+    O treino converte para V (×1e-6) mas os CSP/Scaler/LDA
+    aprenderam com V — por isso convertemos aqui também.
     """
+    total_sec = window_sec + pad_sec
+    n_need    = int(round(sfreq * window_sec))
+    n_total   = int(round(sfreq * total_sec))
 
-    total_sec  = window_sec + pad_sec
-    n_need     = int(sfreq * window_sec)
-    n_total    = int(sfreq * total_sec)
-
-    # Limpa buffer antes de começar
+    # Limpa buffer antes de começar a contagem
     board.get_board_data()
 
     time.sleep(total_sec)
@@ -171,34 +247,18 @@ def get_window(board, eeg_channels, sfreq, sos, window_sec, pad_sec):
     if data.shape[1] == 0:
         return None
 
-    eeg = data[eeg_channels, :]   # (n_ch, n_samples)
+    # BrainFlow devolve µV — converter para V como no treino
+    eeg = data[eeg_channels, :] * 1e-6   # (n_ch, n_samples)
 
-    # Garante que temos amostras suficientes
-    if eeg.shape[1] < n_total:
-        # Menos amostras do que esperado — usa o que há
-        if eeg.shape[1] < n_need:
-            return None
-        # Sem padding suficiente mas com janela suficiente — filtra sem padding
-        eeg_to_filter = eeg
-    else:
-        # Usa as últimas n_total amostras (inclui padding)
-        eeg_to_filter = eeg[:, -n_total:]
-
-    # Aplica filtro passa-banda (mesmo L_FREQ/H_FREQ do treino)
-    eeg_filtered = apply_bandpass(eeg_to_filter, sos)
-
-    # Descarta o padding inicial — fica só a janela de classificação
-    eeg_window = eeg_filtered[:, -n_need:]
-
-    return eeg_window[np.newaxis, :, :]   # (1, n_ch, n_times)
+    return preprocess_window(eeg, sfreq, fir_b, notch_sos_list, n_need, n_total)
 
 
 def classify(window, clf_gate, clf_axis, clf_dir):
     """
     Cascata de classificadores.
-    Devolve (pred_final, caminho) onde caminho descreve as decisões.
+    O Pipeline (CSP → Scaler → LDA) faz tudo internamente.
+    Devolve (pred_final, caminho).
     """
-
     # [1] GATING
     pred_gate = clf_gate.predict(window)[0]
 
@@ -221,22 +281,28 @@ def classify(window, clf_gate, clf_axis, clf_dir):
 # TRIAL
 # ============================================================
 
-def run_trial(board, eeg_channels, sfreq, sos, clf_gate, clf_axis, clf_dir, target_label):
+def run_trial(board, eeg_channels, sfreq,
+              fir_b, notch_sos_list,
+              clf_gate, clf_axis, clf_dir,
+              target_label):
     """
     Corre um trial: conta decrescente → imagética → classificação → validação.
     Devolve (pred, correct).
     """
-
     # Conta decrescente
     for i in range(PREP_SEC, 0, -1):
         print(f"\r  {DIM}A começar em {i}...{RESET}  ", end="", flush=True)
         time.sleep(1.0)
 
     print(f"\r  {BOLD}{CYAN}PENSA: {SYMBOLS[target_label]} {NAMES[target_label]}{RESET}          ")
-    print(f"  {DIM}(a classificar {WINDOW_SEC:.0f}s de sinal...){RESET}")
+    print(f"  {DIM}(a classificar {WINDOW_SEC:.0f}s de sinal + {FILTER_PAD_SEC:.0f}s padding de filtro...){RESET}")
 
-    # Adquire, filtra e classifica
-    window = get_window(board, eeg_channels, sfreq, sos, WINDOW_SEC, FILTER_PAD_SEC)
+    # Adquire, pré-processa e classifica
+    window = get_window(
+        board, eeg_channels, sfreq,
+        fir_b, notch_sos_list,
+        WINDOW_SEC, FILTER_PAD_SEC
+    )
 
     if window is None:
         print(f"  {RED}ERRO: sem dados EEG suficientes.{RESET}")
@@ -349,8 +415,12 @@ def main(session_path):
 
     board, eeg_channels, timestamp_channel, sfreq = start_board()
 
-    # Cria o filtro uma vez — reutilizado em todos os trials
-    sos = make_bandpass(L_FREQ, H_FREQ, sfreq)
+    # Cria filtros uma vez — reutilizados em todos os trials
+    fir_b          = make_fir_bandpass(L_FREQ, H_FREQ, sfreq)
+    notch_sos_list = [make_notch_sos(f, sfreq) for f in NOTCH_FREQS]
+
+    print(f"{DIM}Filtros criados: FIR bandpass {L_FREQ}-{H_FREQ} Hz + "
+          f"notch {NOTCH_FREQS} Hz{RESET}\n")
 
     results = []
     classes = list(NAMES.keys())
@@ -384,7 +454,8 @@ def main(session_path):
             print(f"\n  {BOLD}Prepara-te para pensar em: {SYMBOLS[target]} {NAMES[target]}{RESET}")
 
             pred, correct = run_trial(
-                board, eeg_channels, sfreq, sos,
+                board, eeg_channels, sfreq,
+                fir_b, notch_sos_list,
                 clf_gate, clf_axis, clf_dir,
                 target
             )

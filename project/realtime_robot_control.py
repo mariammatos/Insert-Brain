@@ -74,39 +74,73 @@ COLOR_YELLOW   = "#e8c84c"
 CLASS_COLORS = {0: COLOR_REST, 1: COLOR_LEFT, 2: COLOR_RIGHT, 3: COLOR_FEET}
 
 
+# Nomes anatómicos dos canais — idêntico ao train_subject_model.py
+CHANNEL_NAMES = ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"]
+
+# Janela de classificação = EPOCH_TMAX - EPOCH_TMIN do treino (4.5 - 0.5 = 4.0 s)
+WINDOW_SEC = EPOCH_TMAX - EPOCH_TMIN   # 4.0 s
+
+
 # Funções de processamento de sinal e conversão de dados do buffer para épocas MNE
 def preprocess_raw(raw):
     raw.filter(L_FREQ, H_FREQ, fir_design="firwin", verbose=False)
-    raw.notch_filter(freqs=NOTCH_FREQS, method="fir", verbose=False) 
+    raw.notch_filter(freqs=NOTCH_FREQS, method="fir", verbose=False)
     return raw
 
-def process_buffer_to_epoch(eeg_data, sfreq, ch_names):
+def process_buffer_to_epoch(eeg_data, sfreq):
+    """
+    Converte um buffer de EEG (n_ch, n_samples) para uma época pronta
+    para clf.predict(), aplicando o mesmo pré-processamento do treino:
+      1. µV → V  (BrainFlow devolve µV; MNE/treino usa V)
+      2. Average reference
+      3. FIR bandpass 8-30 Hz  (fir_design="firwin")
+      4. Notch 25 Hz e 50 Hz
+      5. Extrai os últimos WINDOW_SEC segundos (janela de classificação)
+
+    Não usa crop(tmin/tmax) — não há onset. Pega os últimos n_need samples
+    depois de filtrar com padding, tal como no test_model.py.
+    """
+    n_ch      = eeg_data.shape[0]
+    n_need    = int(round(sfreq * WINDOW_SEC))
+    ch_names  = CHANNEL_NAMES[:n_ch]
+
+    # [1] µV → V (igual ao treino: data * 1e-6)
+    eeg_v = eeg_data * 1e-6
+
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    raw = mne.io.RawArray(eeg_data, info, verbose=False)
-    
-    montage = mne.channels.make_standard_montage("standard_1005")
+    raw  = mne.io.RawArray(eeg_v, info, verbose=False)
+
+    # [2] Montage + Average reference (igual ao treino)
+    montage = mne.channels.make_standard_montage("standard_1020")
     raw.set_montage(montage, on_missing="ignore", verbose=False)
     raw.set_eeg_reference("average", verbose=False)
-    
+
+    # [3] FIR bandpass + [4] Notch (igual ao treino)
     raw = preprocess_raw(raw)
-    raw.crop(tmin=EPOCH_TMIN, tmax=EPOCH_TMAX, include_tmax=True)
-    return raw.get_data()
+
+    # [5] Pega os últimos n_need samples (janela de classificação sem onset fixo)
+    data = raw.get_data()          # (n_ch, n_samples_totais)
+    return data[:, -n_need:]       # (n_ch, n_need)
 
 
 # Pipeline de classificação em cascata (Gating -> Axis -> Direction)
+# Os labels são os mesmos definidos no train_subject_model.py:
+#   GATING:    0=REST, 1=ACTIVE
+#   AXIS:      0=HANDS, 1=FEET
+#   DIRECTION: 1=LEFT,  2=RIGHT
 def classify_cascade(epoch_data, clf_gate, clf_axis, clf_dir):
-    w = epoch_data[np.newaxis, :, :]
-    
+    w = epoch_data[np.newaxis, :, :]   # (1, n_ch, n_times)
+
+    # [1] GATING: 0=REST → para aqui
     if clf_gate.predict(w)[0] == 0:
         return 0
-        
-    feet_label = clf_axis.classes_[1]
-    if clf_axis.predict(w)[0] == feet_label:
+
+    # [2] AXIS: 1=FEET → devolve FEET (3)
+    if clf_axis.predict(w)[0] == 1:
         return 3
-        
-    pred_dir = clf_dir.predict(w)[0]
-    left_label = clf_dir.classes_[0]
-    return 1 if pred_dir == left_label else 2
+
+    # [3] DIRECTION: 1=LEFT, 2=RIGHT
+    return int(clf_dir.predict(w)[0])
 
 
 def send_command(serial_conn, cmd):
@@ -163,13 +197,18 @@ class RealTimeWorker(QObject):
             self.board.start_stream()
             sfreq = BoardShim.get_sampling_rate(CONFIG["board_id"])
             eeg_channels = BoardShim.get_eeg_channels(CONFIG["board_id"])
-            ch_names = [f"ch_{i}" for i in range(len(eeg_channels))] 
             self.log_signal.emit(f"Amplifier ready! {len(eeg_channels)} channels at {sfreq}Hz.")
         except Exception as e:
             self.log_signal.emit(f"Board error: {e}")
             self.status_update.emit("EEG Error", "err")
             self.finished.emit()
             return
+
+        # Padding extra para o filtro FIR não ter artefactos de borda
+        # na janela de classificação. 2 s é seguro para filtros MNE a ~250 Hz.
+        FILTER_PAD_SEC = 2.0
+        n_need  = int(round(sfreq * WINDOW_SEC))
+        n_total = int(round(sfreq * (WINDOW_SEC + FILTER_PAD_SEC)))
 
         self.status_update.emit("System Active", "ok")
         servo_idx = 0
@@ -197,10 +236,10 @@ class RealTimeWorker(QObject):
 
             # 2. Fase THINK (Imagética Motora)
             self.state_update.emit("think", 0)
-            self.log_signal.emit(f"▸ THINK WINDOW: Control the system now! ({MI_DURATION}s)")
-            self.board.get_board_data()
+            self.log_signal.emit(f"▸ THINK WINDOW: Control the system now! ({WINDOW_SEC + FILTER_PAD_SEC:.1f}s incl. filter pad)")
+            self.board.get_board_data()   # limpa buffer antes de começar
             
-            t_end = time.time() + MI_DURATION
+            t_end = time.time() + WINDOW_SEC + FILTER_PAD_SEC
             while time.time() < t_end and not self._stop and not self._paused:
                 time.sleep(0.05)
 
@@ -208,19 +247,20 @@ class RealTimeWorker(QObject):
 
             # 3. Classificação
             self.log_signal.emit("Processing buffer...")
-            raw_data = self.board.get_board_data()
-            eeg_samples = raw_data[eeg_channels, :]
-            
-            needed_samples = int(sfreq * MI_DURATION)
-            if eeg_samples.shape[1] < needed_samples:
+            raw_data    = self.board.get_board_data()
+            eeg_samples = raw_data[eeg_channels, :]   # (n_ch, n_samples)
+
+            if eeg_samples.shape[1] < n_need:
                 self.log_signal.emit("Insufficient samples, skipping trial.")
                 continue
-            
-            eeg_segment = eeg_samples[:, :needed_samples]
-            
+
+            # Passa as últimas n_total amostras (janela + padding);
+            # process_buffer_to_epoch descarta o padding depois de filtrar.
+            eeg_segment = eeg_samples[:, -min(eeg_samples.shape[1], n_total):]
+
             try:
-                epoch = process_buffer_to_epoch(eeg_segment, sfreq, ch_names)
-                pred = classify_cascade(epoch, clf_gate, clf_axis, clf_dir)
+                epoch = process_buffer_to_epoch(eeg_segment, sfreq)
+                pred  = classify_cascade(epoch, clf_gate, clf_axis, clf_dir)
             except Exception as ex:
                 self.log_signal.emit(f"Processing/Prediction error: {ex}")
                 continue
