@@ -1,8 +1,8 @@
 # ============================================================
-# FILE: check_alpha.py
+# FILE: visualize/check_alpha.py
 #
-# Verifica pico alpha (10 Hz) em olhos abertos vs fechados.
-# Usa os primeiros 60s da sessão (30s open + 30s closed).
+# Checks the alpha peak (10 Hz) during eyes-open vs eyes-closed baseline.
+# Uses the baseline blocks recorded at the start of the session.
 #
 # What to look for: on the eyes-closed curve (orange) you should
 # see a clear bump peaking around 10 Hz that's absent or smaller
@@ -12,7 +12,7 @@
 # (FC3, FC4), that's completely normal and actually a good sign —
 # alpha is strongest over occipital/parietal areas.
 #
-# Uso: python check_alpha.py <session_path>
+# Usage: python check_alpha.py <session_path>
 # ============================================================
 
 import sys
@@ -22,13 +22,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.signal import welch
 
-SESSION_PATH = r"C:\Users\afons\Projetos\NEURO\Insert-Brain\data"  # fallback
+SESSION_PATH = r"data"  # fallback
 
 SFREQ        = 250
 BASELINE_SEC = 30   # duração de cada bloco
 L_FREQ, H_FREQ = 8.0, 30.0
 
-CHANNEL_NAMES = ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"]
+CHANNEL_NAMES = ["F3", "F4", "FC4", "C3", "FCz", "CP3", "CP4", "CPz"]
 
 BG = "#0F0F14"
 
@@ -50,7 +50,7 @@ def load_and_split(session_path):
     def get_block(event_name):
         row = markers[markers["event"] == event_name]
         if row.empty:
-            raise ValueError(f"Marker '{event_name}' não encontrado.")
+            raise ValueError(f"Marker '{event_name}' not found.")
         t_start = float(row.iloc[0]["timestamp"])
         i_start = int((t_start - ts[0]) * SFREQ)
         i_end   = i_start + BASELINE_SEC * SFREQ
@@ -71,7 +71,7 @@ def plot_alpha(open_eeg, closed_eeg):
     nrows = int(np.ceil(n_ch / ncols))
     fig, axes = plt.subplots(nrows, ncols, figsize=(14, 3.5 * nrows))
     fig.patch.set_facecolor(BG)
-    fig.suptitle("Alpha check — olhos abertos vs fechados", color="#CCC", fontsize=13)
+    fig.suptitle("Alpha check — eyes open vs closed", color="#CCC", fontsize=13)
 
     axes_flat = axes.flatten() if n_ch > 1 else [axes]
 
@@ -83,8 +83,8 @@ def plot_alpha(open_eeg, closed_eeg):
         fc, pc = welch(closed_f[i], fs=SFREQ, nperseg=4*SFREQ)
 
         mask = (fo >= 1) & (fo <= 40)
-        ax.semilogy(fo[mask], po[mask], color="#4C9BE8", linewidth=1.2, label="Olhos abertos")
-        ax.semilogy(fc[mask], pc[mask], color="#E8774C", linewidth=1.2, label="Olhos fechados")
+        ax.semilogy(fo[mask], po[mask], color="#4C9BE8", linewidth=1.2, label="Eyes open")
+        ax.semilogy(fc[mask], pc[mask], color="#E8774C", linewidth=1.2, label="Eyes closed")
 
         # Alpha band shading
         ax.axvspan(8, 12, alpha=0.12, color="#FFDD77")
@@ -111,6 +111,6 @@ def plot_alpha(open_eeg, closed_eeg):
 if __name__ == "__main__":
     path = sys.argv[1] if len(sys.argv) > 1 else SESSION_PATH
     open_eeg, closed_eeg = load_and_split(path)
-    print(f"Olhos abertos:  {open_eeg.shape[1]/SFREQ:.1f}s")
-    print(f"Olhos fechados: {closed_eeg.shape[1]/SFREQ:.1f}s")
+    print(f"Eyes open:  {open_eeg.shape[1]/SFREQ:.1f}s")
+    print(f"Eyes closed: {closed_eeg.shape[1]/SFREQ:.1f}s")
     plot_alpha(open_eeg, closed_eeg)

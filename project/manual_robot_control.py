@@ -1,11 +1,19 @@
 # ============================================================
-# FILE: robot_control_gui.py
+# FILE: manual_robot_control.py
 #
-# Interface gráfica para controlo manual do braço robótico
-# via porta série (insert_brain_connected.ino).
+# PyQt5-based GUI for manual control of a robotic arm
+# via serial communication with Arduino firmware
+# (insert_brain_connected.ino).
 #
-# Uso: python robot_control_gui.py
-# Dependências: PyQt5, pyserial
+# Features:
+# - Serial port connection manager
+# - Real-time command sending to robotic arm
+# - Visual servo/joint state indicator
+# - Continuous hold-to-move controls
+# - Live serial log display
+#
+# Usage:
+#   python robot_control_gui.py
 # ============================================================
 
 import sys
@@ -14,11 +22,11 @@ import serial.tools.list_ports
 import time
 
 from PyQt5.QtCore    import Qt, QTimer, pyqtSignal, QThread
-from PyQt5.QtGui     import QFont, QColor, QPainter, QPen, QBrush, QFontDatabase
+from PyQt5.QtGui     import QFont, QColor, QPainter, QPen, QBrush
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QTextEdit,
-    QFrame, QGridLayout, QSizePolicy
+    QFrame, QSizePolicy
 )
 
 ROBOT_BAUD   = 9600

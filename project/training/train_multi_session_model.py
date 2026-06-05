@@ -1,10 +1,14 @@
-"""
-train_multi_session_model.py
-
-Usage:
-    python train_multi_session_model.py <output_dir> <session1> <session2> [session3 ...]
-    python project/training/train_multi_session_model.py data/combined_Afonso2 --name Afonso2
-"""
+# ============================================================
+# FILE: training/train_multi_session_model.py
+#
+# Trains subject models by combining data from multiple sessions.
+# Merges epochs across sessions before fitting, producing a single
+# set of three cascade models saved to the output directory.
+#
+# Usage:
+#   python train_multi_session_model.py <output_dir> <session1> <session2> [...]
+#   python train_multi_session_model.py data/combined_Afonso2 --name Afonso2
+# ============================================================
 
 import numpy as np
 import joblib
@@ -147,7 +151,6 @@ def train_multi_session_model(session_paths, output_dir):
 if __name__ == "__main__":
 
     import sys
-    import os
     import glob
     import argparse
 

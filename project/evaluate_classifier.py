@@ -1,26 +1,24 @@
 # ============================================================
 # FILE: evaluate_classifier.py
 #
-# Avalia o classificador numa sessão gerada, sem robô.
-# Pré-processamento idêntico ao treino:
-#   1. Referência average
-#   2. Bandpass FIR 8-30Hz  (MNE firwin)
-#   3. Notch FIR 50Hz       (MNE)
-#   4. ICA — remoção automática de artefactos musculares
+# Evaluates classifier on a generated session (no robot).
+# Preprocessing:
+#   1. Average reference
+#   2. 8–30 Hz bandpass (FIR)
+#   3. 50 Hz notch (FIR)
+#   4. ICA muscle artifact removal
 #
-# Classificação blind: o classificador não consulta os markers
-# para saber onde classificar — usa apenas a estrutura temporal
-# fixa dos blocos (CUE_DURATION + EPOCH_TMIN/TMAX).
-# Os markers são usados APENAS no final para verificar acertos.
+# Blind evaluation: no marker usage for window selection.
+# Fixed timing is used (CUE_DURATION + EPOCH_TMIN/TMAX).
+# Markers are only used for final accuracy scoring.
 #
-# Estrutura de cada bloco (BLOCK_DURATION segundos):
-#   [0s → CUE_DURATION]                        cue — ignorado
-#   [CUE_DURATION+EPOCH_TMIN → CUE_DURATION+EPOCH_TMAX]  classificar
-#   [CUE_DURATION+EPOCH_TMAX → BLOCK_DURATION] ignorado
+# Block layout:
+#   [0 → CUE_DURATION]                         cue (ignored)
+#   [CUE_DURATION + EPOCH_TMIN → + EPOCH_TMAX] classify
+#   [rest]                                     ignored
 #
-# Uso:
+# Usage:
 #   python evaluate_classifier.py <session_path>
-#   python evaluate_classifier.py data/S020_demo
 # ============================================================
 
 import os

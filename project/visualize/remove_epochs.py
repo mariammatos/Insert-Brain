@@ -1,5 +1,5 @@
 # ============================================================
-# FILE: remove_epochs.py
+# FILE: visualize/remove_epochs.py
 #
 # Removes specific trials from a session's raw CSV files and
 # saves a cleaned copy to a new folder (originals untouched).
@@ -89,7 +89,6 @@ def get_trial_window(mi_start_ts, markers):
     t_start = timestamp of cue_on before this mi_start (or mi_start - EPOCH_TMIN)
     t_end   = timestamp of mi_end after this mi_start (or mi_start + EPOCH_TMAX)
     """
-    # Find the mi_end that immediately follows this mi_start
     mi_end_rows = markers[
         (markers["event"] == "mi_end") &
         (markers["timestamp"] > mi_start_ts)
@@ -97,7 +96,6 @@ def get_trial_window(mi_start_ts, markers):
 
     t_end = mi_end_rows.iloc[0]["timestamp"] if len(mi_end_rows) > 0 else mi_start_ts + EPOCH_TMAX
 
-    # Find the cue_on that immediately precedes this mi_start
     cue_rows = markers[
         (markers["event"] == "cue_on") &
         (markers["timestamp"] < mi_start_ts)
@@ -121,8 +119,7 @@ def remove_trials(session_path, removals, output_path=None):
     print(f"\nLoading session: {session_path}")
     eeg_df, markers, metadata = load_session(session_path)
 
-    # Resolve class names → labels and find mi_start timestamps to remove
-    windows_to_remove = []   # list of (t_start, t_end) in Unix time
+    windows_to_remove = []   # list of (t_start, t_end, class_name, epoch_idx, mi_ts)
 
     for class_name, epoch_idx in removals:
         label = label_for_class(class_name, metadata)
@@ -163,13 +160,13 @@ def remove_trials(session_path, removals, output_path=None):
 
     eeg_clean = eeg_df[keep_mask].copy().reset_index(drop=True)
 
-    # Stitch timestamps: shift each segment after a gap so time is continuous
+    # Stitch timestamps: shift each segment after a removed window so time is continuous
     ts_clean    = eeg_clean["timestamp"].values.copy()
     dt_nominal  = 1.0 / metadata["sampling_rate"]
 
     for i in range(1, len(ts_clean)):
         gap = ts_clean[i] - ts_clean[i - 1]
-        if gap > dt_nominal * 2.5:   # detected stitch point
+        if gap > dt_nominal * 2.5:
             shift = gap - dt_nominal
             ts_clean[i:] -= shift
             print(f"  Stitched gap of {gap:.4f}s at sample {i}")
@@ -189,9 +186,8 @@ def remove_trials(session_path, removals, output_path=None):
     removed_markers = len(markers) - len(markers_clean)
     print(f"  Removed {removed_markers} marker rows")
 
-    # Shift marker timestamps to match stitched EEG
-    # For each removed window, shift all markers that came after it
-    # Process in reverse chronological order to avoid compounding offsets
+    # Shift marker timestamps to match stitched EEG.
+    # Process in reverse chronological order to avoid compounding offsets.
     sorted_windows = sorted(windows_to_remove, key=lambda x: x[0], reverse=True)
     mk_ts = markers_clean["timestamp"].values.copy()
 
@@ -209,7 +205,6 @@ def remove_trials(session_path, removals, output_path=None):
 
     os.makedirs(output_path, exist_ok=True)
 
-    # Copy metadata unchanged
     shutil.copy(
         os.path.join(session_path, "metadata.json"),
         os.path.join(output_path, "metadata.json")
@@ -222,7 +217,6 @@ def remove_trials(session_path, removals, output_path=None):
     print(f"    EEG rows : {len(eeg_df)} → {len(eeg_clean)}")
     print(f"    Markers  : {len(markers)} → {len(markers_clean)}")
 
-    # Summary of what was removed
     print("\n  Removed trials:")
     for _, _, class_name, epoch_idx, mi_ts in windows_to_remove:
         print(f"    {class_name} epoch {epoch_idx}  (mi_start={mi_ts:.3f})")
@@ -233,15 +227,6 @@ def remove_trials(session_path, removals, output_path=None):
 # ============================================================
 
 def parse_args():
-    """
-    Supports two calling styles:
-
-    Simple (one class, one or more epochs):
-      remove_epochs.py <session> <CLASS> <idx> [idx ...]
-
-    Multi-class (use -- as separator):
-      remove_epochs.py <session> LEFT 7 -- RIGHT 2 5 -- FEET 3
-    """
     if len(sys.argv) < 4:
         print(__doc__)
         sys.exit(1)

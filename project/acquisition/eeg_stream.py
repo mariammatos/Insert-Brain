@@ -1,5 +1,9 @@
 # ============================================================
 # FILE: acquisition/eeg_stream.py
+#
+# Wraps BrainFlow's BoardShim to manage the EEG stream.
+# Handles session setup, start/stop, and raw data retrieval
+# from the Cyton board via serial port.
 # ============================================================
 
 import time

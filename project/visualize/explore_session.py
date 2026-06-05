@@ -1,19 +1,20 @@
 # ============================================================
-# FILE: explore_session.py
+# FILE: visualize/explore_session.py
 #
-# Análise exploratória de uma sessão EEG antes de treinar.
-# Serve para verificar se há sinal distinguível entre classes
-# antes de investir em mais aquisições.
+# Exploratory analysis of an EEG session before training.
+# Used to check whether there is a distinguishable signal
+# between classes before investing in more acquisitions.
 #
-# Gera 4 figuras:
-#   1. Espectros médios por classe (C3, Cz, C4)
-#   2. ERD/ERS time-frequency por classe
-#   3. Topografias de potência por banda e por classe
-#   4. CSP patterns aprendidos (LEFT vs RIGHT, HANDS vs FEET)
+# Generates 5 figures:
+#   1. Average spectra per class (all channels)
+#   2. ERD/ERS time-frequency per class
+#   3. Power topographies per band and class
+#   4. CSP patterns (LEFT vs RIGHT, HANDS vs FEET)
+#   5. Raw epoch averages per class (sanity check)
 #
-# Uso:
+# Usage:
 #   python explore_session.py
-#   python explore_session.py data/maria4_1779448943.511749
+#   python explore_session.py data/maria4_20260602_123342
 # ============================================================
 
 import os
@@ -22,9 +23,7 @@ import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import mne
-from mne.preprocessing import ICA
 from mne.decoding import CSP
 from mne.time_frequency import tfr_multitaper
 
@@ -42,8 +41,7 @@ EPOCH_TMAX = 4.5    # janela larga para ver o ERD desenvolver-se
 N_CSP      = 4
 RANDOM_SEED = 42
 
-#CHANNEL_NAMES = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"]
-CHANNEL_NAMES = ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"]
+CHANNEL_NAMES = ["F3", "F4", "FC4", "C3", "FCz", "CP3", "CP4", "CPz"]
 
 CLASS_COLORS = {
     "REST":  "#888888",
@@ -590,31 +588,31 @@ def explore_session(session_path):
     print("=" * 60)
 
     print("""
-O QUE PROCURAR NAS FIGURAS:
+        WHAT TO LOOK FOR IN THE FIGURES:
 
-  explore_spectra.png
-    → As curvas de LEFT/RIGHT devem ser diferentes de FEET em mu e beta
-    → Se estão todas sobrepostas: sem sinal distinguível
+        explore_spectra.png
+            → LEFT/RIGHT curves should differ from FEET in mu and beta bands
+            → If all curves overlap: no distinguishable signal
 
-  explore_erd.png
-    → Deve aparecer azul (ERD = descida de potência) após t=0
-    → Em C3 para LEFT, em C4 para RIGHT, em Cz para FEET
-    → Se não há azul: o sujeito não está a fazer imagética motora
+        explore_erd.png
+            → Blue (ERD = power decrease) should appear after t=0
+            → At C3 for LEFT, C4 for RIGHT, Cz for FEET
+            → If no blue: subject is not performing motor imagery
 
-  explore_topos.png
-    → LEFT deve ter mais actividade em C4, RIGHT em C3 (contralateral)
-    → FEET deve ter activação central (Cz)
-    → Se as topografias estão todas iguais: sem diferença espacial
+        explore_topos.png
+            → LEFT should show more activity at C4, RIGHT at C3 (contralateral)
+            → FEET should show central activation (Cz)
+            → If all topographies look the same: no spatial difference
 
-  explore_csp.png
-    → Os patterns devem ter actividade em C3/C4/Cz
-    → Se a actividade está nos canais de borda (FC3, FCz, CP3):
-      provável artefacto muscular ou de movimento
+        explore_csp.png
+            → Patterns should show activity at C3/C4/Cz
+            → If activity is at edge channels (FC3, FCz, CP3):
+            likely muscle or movement artefact
 
-  explore_raw_epochs.png
-    → Verifica se há picos, drift, ou saturação
-    → Sinal limpo deve ser suave e centrado em 0
-""")
+        explore_raw_epochs.png
+            → Check for spikes, drift, or saturation
+            → Clean signal should be smooth and centred at 0
+    """)
 
 
 # ============================================================

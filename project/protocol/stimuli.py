@@ -1,5 +1,9 @@
 # ============================================================
 # FILE: protocol/stimuli.py
+#
+# Manages all visual stimuli for the experiment window.
+# Handles fixation cross, cue display, HUD elements,
+# progress bar, and phase labels using PsychoPy.
 # ============================================================
 
 from psychopy import visual
@@ -11,7 +15,7 @@ class Stimuli:
 
         self.win = win
 
-        # ── Estímulos principais (iguais ao original) ────────
+        # ───────────── Main stimuli ──────────────────────
 
         self.fixation = visual.TextStim(
             win,
@@ -35,8 +39,8 @@ class Stimuli:
             color="white"
         )
 
-        # ── HUD — canto superior esquerdo ────────────────────
-        # Tempo restante
+        # # ── HUD — top left corner ────────────────────────
+        # Remaining time
         self.hud_time = visual.TextStim(
             win,
             text="",
@@ -46,7 +50,7 @@ class Stimuli:
             anchorHoriz="left"
         )
 
-        # Trials feitos
+        # Completed trials
         self.hud_trials = visual.TextStim(
             win,
             text="",
@@ -56,8 +60,8 @@ class Stimuli:
             anchorHoriz="left"
         )
 
-        # ── HUD — canto superior direito ─────────────────────
-        # Classe atual
+        # ── HUD — top right corner ───────────────────────
+        # Current class
         self.hud_class = visual.TextStim(
             win,
             text="",
@@ -67,8 +71,8 @@ class Stimuli:
             anchorHoriz="right"
         )
 
-        # ── Barra de progresso de tempo ──────────────────────
-        # Fundo cinzento
+        # ── Time progress bar ────────────────────────────
+        # Grey background
         self.bar_bg = visual.Rect(
             win,
             width=1.4,
@@ -78,7 +82,7 @@ class Stimuli:
             lineColor=None
         )
 
-        # Preenchimento verde (vai encolhendo)
+        # Green fill (shrinks over time)
         self.bar_fill = visual.Rect(
             win,
             width=1.4,
@@ -88,7 +92,7 @@ class Stimuli:
             lineColor=None
         )
 
-        # ── Fase do trial (FIXAÇÃO / CUE / IMAGINA / REPOUSO) ─
+        # ── Trial phase label (FIXATION / CUE / IMAGERY / REST) ─
         self.phase_text = visual.TextStim(
             win,
             text="",
@@ -97,19 +101,19 @@ class Stimuli:
             color="#888888"
         )
 
-        # Guarda o tempo total para calcular a barra
+        # Stores total time for progress bar calculation
         self._max_seconds = 1.0
 
     # ========================================================
-    # CONFIGURAR TEMPO MÁXIMO (chamar no início do protocolo)
+    # SET MAX TIME (call at the start of the protocol)
     # ========================================================
 
     def set_max_time(self, max_seconds):
         self._max_seconds = max_seconds
 
     # ========================================================
-    # ACTUALIZAR HUD
-    # Chamar antes de qualquer draw, passa os valores actuais
+    # UPDATE HUD
+    # Call before any draw, passes current values
     # ========================================================
 
     def update_hud(self, elapsed_seconds, trials_done, current_class=""):
@@ -128,13 +132,13 @@ class Stimuli:
         self.hud_trials.text = f"✓  {trials_done} trials"
         self.hud_class.text  = current_class
 
-        # Barra de progresso — encolhe da direita para a esquerda
+        # Progress bar — shrinks from right to left
         ratio     = max(0.0, remaining / self._max_seconds)
         bar_width = 1.4 * ratio
         self.bar_fill.width = max(0.001, bar_width)
         self.bar_fill.pos   = (-0.7 + bar_width / 2, -0.46)
 
-        # Cor muda para laranja nos últimos 2 min, vermelho no último 1 min
+        # Colour changes to orange in last 2 min, red in last 1 min
         if remaining < 60:
             self.bar_fill.fillColor = "#DD4444"
         elif remaining < 120:
@@ -152,7 +156,7 @@ class Stimuli:
             self.hud_class.draw()
 
     # ========================================================
-    # MOSTRAR FASE DO TRIAL
+    # DRAW TRIAL PHASE
     # ========================================================
 
     def _draw_phase(self, phase):
@@ -161,7 +165,7 @@ class Stimuli:
         self.phase_text.draw()
 
     # ========================================================
-    # MÉTODOS PÚBLICOS — compatíveis com o original + HUD
+    # PUBLIC METHODS — compatible with original + HUD
     # ========================================================
 
     def show_fixation(self, elapsed=None, trials_done=None):
@@ -174,7 +178,7 @@ class Stimuli:
             self.update_hud(elapsed, trials_done or 0)
             self._draw_hud()
 
-        self._draw_phase("FIXAÇÃO")
+        self._draw_phase("FIXATION")
         self.fixation.draw()
         self.win.flip()
 
@@ -188,7 +192,7 @@ class Stimuli:
             self.update_hud(elapsed, trials_done or 0, current_class=text)
             self._draw_hud()
 
-        self._draw_phase("IMAGINA")
+        self._draw_phase("IMAGERY")
         self.cue.text  = symbol
         self.info.text = text
         self.cue.draw()
@@ -205,7 +209,7 @@ class Stimuli:
             self.update_hud(elapsed, trials_done or 0, current_class=text)
             self._draw_hud()
 
-        self._draw_phase("★  IMAGINA  ★")
+        self._draw_phase("★  IMAGERY  ★")
         self.cue.text  = symbol
         self.info.text = text
 
@@ -225,7 +229,7 @@ class Stimuli:
             self.update_hud(elapsed, trials_done or 0)
             self._draw_hud()
 
-        self._draw_phase("REPOUSO")
+        self._draw_phase("REST")
         self.fixation.draw()
         self.win.flip()
 

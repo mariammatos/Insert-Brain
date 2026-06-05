@@ -1,20 +1,18 @@
 # ============================================================
-# FILE: playback_robot_gui.py
+# FILE: offline_playback_robot_control.py
 #
-# Playback BCI com interface gráfica (PyQt5).
-# Pré-processamento e classificação idênticos ao evaluate_classifier.
+# BCI playback system with PyQt5 graphical interface.
+# EEG preprocessing and classification match evaluate_classifier.
 #
-# Comportamento do robô:
-#   LEFT / RIGHT  → envia o comando repetidamente a cada MOVE_INTERVAL
-#                   segundos até ao próximo evento classificado
-#   REST          → para o movimento contínuo, fica parado
-#   FEET          → troca o servo activo, fica parado
+# Robot behavior:
+#   LEFT / RIGHT → continuous command repeat at MOVE_INTERVAL
+#   REST         → stops movement
+#   FEET         → switches active servo and stops movement
 #
-# A leitura de dados segue sempre t_mi_start + EPOCH_TMIN/TMAX
-# dos markers reais — o comportamento do robô entre classificações
-# não afecta a sequência de extracção de épocas.
+# Epoch extraction is always based on real dataset timestamps
+# (t_mi_start + EPOCH_TMIN/TMAX), independent of robot actions.
 #
-# Uso:
+# Usage:
 #   python playback_robot_gui.py <session_path> [--no-robot] [--speed N]
 #   python playback_robot_gui.py data/S020_demo --no-robot
 # ============================================================

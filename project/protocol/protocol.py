@@ -1,5 +1,9 @@
 # ============================================================
 # FILE: protocol/protocol.py
+#
+# Defines the motor imagery experiment protocol.
+# Manages trial generation, timing, stimulus display,
+# and event marker logging for a full BCI session.
 # ============================================================
 
 import time
@@ -20,12 +24,12 @@ class MotorImageryProtocol:
 
         self.logger = logger
 
-        # Guardar o offset Unix no exacto momento em que o Clock é criado.
-        # Permite converter qualquer self.clock.getTime() para Unix time:
+        # Store the Unix offset at the exact moment the Clock is created.
+        # Allows converting any self.clock.getTime() to Unix time:
         #   unix_ts = self.clock_unix_offset + self.clock.getTime()
         #
-        # É crítico que as duas linhas abaixo sejam consecutivas e sem
-        # nenhum código entre elas, para minimizar o erro de medição.
+        # It is critical that the two lines below are consecutive with
+        # no code between them, to minimise measurement error.
         self.clock             = core.Clock()
         self.clock_unix_offset = time.time()
 
@@ -46,11 +50,11 @@ class MotorImageryProtocol:
 
     def to_unix(self, clock_time):
         """
-        Converte um timestamp de self.clock.getTime() para Unix time,
-        usando o offset calculado no __init__.
+        Converts a self.clock.getTime() timestamp to Unix time,
+        using the offset calculated in __init__.
 
-        O pequeno erro entre as duas chamadas (~microsegundos) é
-        desprezável para EEG a 250 Hz (resolução de 4 ms).
+        The small error between the two calls (~microseconds) is
+        negligible for EEG at 250 Hz (4 ms resolution).
         """
         return self.clock_unix_offset + clock_time
 

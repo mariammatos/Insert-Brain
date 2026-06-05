@@ -1,25 +1,21 @@
 # ============================================================
 # FILE: training/train_subject_model.py
-# ============================================================
 #
-# Pipeline de treino específico por sujeito.
-# Corre após a aquisição e guarda os modelos na pasta da sessão.
+# Subject-specific training pipeline. Runs after acquisition
+# and saves trained models to the session folder.
 #
-# Três classificadores em cascata:
+# Three cascaded classifiers:
 #
 #   [1] GATING:    REST (0) vs ACTIVE (1)
-#         ↓ se ACTIVE
-#   [2] AXIS:      Mãos (0) vs Pés (1)
-#         ↓ se Mãos
-#   [3] DIRECTION: Esquerda (1) vs Direita (2)
+#         ↓ if ACTIVE
+#   [2] AXIS:      Hands (0) vs Feet (1)
+#         ↓ if Hands
+#   [3] DIRECTION: Left (1) vs Right (2)
 #
-# No robô: só avança para o próximo nível se o anterior disser ACTIVE/Mãos.
-#
-# Inputs esperados na pasta da sessão:
-#   eeg_raw.csv   → sinal EEG + coluna "timestamp"
+# Expected inputs in the session folder:
+#   eeg_raw.csv   → EEG signal + "timestamp" column
 #   markers.csv   → timestamp, event, label
 #   metadata.json → sampling_rate, eeg_channels, classes, timings
-#
 # ============================================================
 
 import os
@@ -30,7 +26,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 import mne
-from mne.preprocessing import ICA
 from mne.decoding import CSP
 
 from sklearn.pipeline import Pipeline
@@ -121,8 +116,7 @@ def build_mne_raw(eeg_df, metadata):
     sfreq = metadata["sampling_rate"]
 
     # Nomes dos canais OpenBCI Cyton+Daisy (8 canais)
-    #CHANNEL_NAMES = ["FCz", "Cz", "CP4", "CP3", "C4", "C3", "FC4", "FC3"]
-    CHANNEL_NAMES = ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"]
+    CHANNEL_NAMES = ["F3", "F4", "FC4", "C3", "FCz", "CP3", "CP4", "CPz"]
 
 
     n_ch     = len(metadata["eeg_channels"])
@@ -263,13 +257,9 @@ def build_epochs(raw, markers, sfreq, label_filter, eeg_start_unix):
         baseline=None, preload=True, verbose=False
     )
 
-    n_dropped = n_valid - len(epochs)           # já tens esta linha mais abaixo — move-a para cá
+    n_dropped = n_valid - len(epochs)
     if n_dropped > 0:
-        print(
-            f"  ⚠ {n_dropped} epoch(s) rejeitados (artefacto de amplitude)."
-            f"  ⚠ {n_dropped} epoch(s) descartados pelo MNE " # Verificar se algum epoch foi descartado pelo MNE (fora dos limites)
-            f"(provavelmente próximos do fim do registo)."
-        )
+        print(f"  ⚠ {n_dropped} epoch(s) rejected by MNE (likely too close to the end of the recording).")
 
     return epochs.get_data(), epochs.events[:, -1]
 

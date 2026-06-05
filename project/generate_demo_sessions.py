@@ -1,35 +1,28 @@
 # ============================================================
-# GENERATE PHYSIONET DEMO SESSIONS
-# ============================================================
+# FILE: generate_demo_sessions.py
 #
-# Exporta EEG raw (sem filtragem) em blocos de duração fixa.
+# Builds synthetic EEG sessions from PhysioNet EEGBCI data.
 #
-# Cada bloco tem exactamente BLOCK_DURATION segundos:
+# Each session is composed of fixed-duration blocks:
 #
-#   [0s          → CUE_DURATION]   período de cue
-#   [CUE_DURATION → BLOCK_DURATION] MI real contínuo da classe
+#   [0s → CUE_DURATION]   cue / idle period (ignored by model)
+#   [CUE_DURATION → end]  motor imagery segment (active class)
 #
-# A colagem entre segmentos fica sempre no início do cue,
-# onde o classificador nunca olha.
+# Blocks are concatenated sequentially to simulate a real-time
+# continuous EEG stream without relying on event markers during
+# inference.
 #
-# O playback pode então andar cegamente:
-#   - ignora os primeiros CUE_DURATION + EPOCH_TMIN segundos
-#   - classifica [EPOCH_TMIN → EPOCH_TMAX] após mi_start
-#   - ignora o resto até ao próximo bloco
-#   sem precisar de consultar os markers para isso.
+# Class mapping (PhysioNet → project labels):
+#   T1 (hands) → LEFT
+#   T2 (hands) → RIGHT
+#   T2 (feet)  → FEET
+#   baseline   → REST
 #
-# Mapeamento PhysioNet → labels do projecto:
-#   T1 (runs hands) → 1 = LEFT
-#   T2 (runs hands) → 2 = RIGHT
-#   T2 (runs feet)  → 3 = FEET
-#   baseline (runs rest) → 0 = REST
-#
-# Saída:
+# Output structure:
 #   generated_sessions/S{subj}_demo/
-#       eeg_raw.csv    — colunas ch_0..ch_7, timestamp
-#       markers.csv    — timestamp, event, label
-#       sfreq.txt      — frequência de amostragem
-#
+#       eeg_raw.csv   -> EEG channels + timestamps
+#       markers.csv   -> event timeline (cue / MI phases)
+#       sfreq.txt     -> sampling frequency
 # ============================================================
 
 import os

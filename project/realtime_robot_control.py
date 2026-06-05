@@ -1,6 +1,13 @@
 # ============================================================
 # FILE: realtime_robot_control.py
-# python realtime_robot_control.py data/P001_20250521_143000
+#
+# Real-time BCI robot control GUI. Streams EEG via BrainFlow,
+# runs the cascade classifier (gating → axis → direction), and
+# sends serial commands to the robot arm.
+#
+# Usage:
+#   python realtime_robot_control.py <session_path>
+#   python realtime_robot_control.py data/P001_20250521_143000
 # ============================================================
 
 import sys
@@ -75,7 +82,7 @@ CLASS_COLORS = {0: COLOR_REST, 1: COLOR_LEFT, 2: COLOR_RIGHT, 3: COLOR_FEET}
 
 
 # Nomes anatómicos dos canais — idêntico ao train_subject_model.py
-CHANNEL_NAMES = ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"]
+CHANNEL_NAMES = ["F3", "F4", "FC4", "C3", "FCz", "CP3", "CP4", "CPz"]
 
 # Janela de classificação = EPOCH_TMAX - EPOCH_TMIN do treino (4.5 - 0.5 = 4.0 s)
 WINDOW_SEC = EPOCH_TMAX - EPOCH_TMIN   # 4.0 s
@@ -89,16 +96,13 @@ def preprocess_raw(raw):
 
 def process_buffer_to_epoch(eeg_data, sfreq):
     """
-    Converte um buffer de EEG (n_ch, n_samples) para uma época pronta
-    para clf.predict(), aplicando o mesmo pré-processamento do treino:
-      1. µV → V  (BrainFlow devolve µV; MNE/treino usa V)
+    Convert a raw EEG buffer (n_ch, n_samples) into a preprocessed epoch
+    ready for clf.predict(), applying the same pipeline used at training:
+      1. µV → V
       2. Average reference
-      3. FIR bandpass 8-30 Hz  (fir_design="firwin")
-      4. Notch 25 Hz e 50 Hz
-      5. Extrai os últimos WINDOW_SEC segundos (janela de classificação)
-
-    Não usa crop(tmin/tmax) — não há onset. Pega os últimos n_need samples
-    depois de filtrar com padding, tal como no test_model.py.
+      3. FIR bandpass 8-30 Hz
+      4. Notch at 25 Hz and 50 Hz
+      5. Take the last WINDOW_SEC samples (no fixed onset)
     """
     n_ch      = eeg_data.shape[0]
     n_need    = int(round(sfreq * WINDOW_SEC))
@@ -498,7 +502,7 @@ class RealTimeWindow(QWidget):
         self.pause_btn.clicked.connect(self._toggle_pause)
         control_row.addWidget(self.pause_btn)
 
-        self.stop_btn = QPushButton("STOP & CLOSE CODE")
+        self.stop_btn = QPushButton("STOP & CLOSE")
         self.stop_btn.setFont(QFont("Courier New", 10, QFont.Bold))
         self.stop_btn.setStyleSheet(self._btn_style(COLOR_RED))
         self.stop_btn.clicked.connect(self.close)
@@ -541,7 +545,7 @@ class RealTimeWindow(QWidget):
                 self.conn_status.setText("● Connected")
                 self.conn_status.setStyleSheet(f"color: {COLOR_ACCENT}; font-weight: bold;")
                 self.connect_btn.setText("DISCONNECT")
-                self._log(f"Robot successfully link on port {port}")
+                self._log(f"Robot connected on port {port}")
             except Exception as e:
                 self._log(f"Robot link failure: {e}")
 

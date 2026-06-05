@@ -1,12 +1,14 @@
 # ============================================================
 # FILE: acquisition/data_logger.py
+#
+# Handles saving of EEG session data to disk.
+# Creates a timestamped session folder and saves raw EEG,
+# event markers, and metadata as CSV/JSON files.
 # ============================================================
 
 import os
 import json
 import pandas as pd
-import time
-
 from datetime import datetime
 
 
@@ -14,7 +16,7 @@ class DataLogger:
 
     def __init__(self, participant_id):
 
-        # Timestamp legível — gera pastas como "P001_20250522_143000"
+        # Readable timestamp — generates folders like "P001_20250522_143000"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         self.session_path = os.path.join(
@@ -46,7 +48,7 @@ class DataLogger:
 
     def save_eeg(self, data, eeg_channels, timestamp_channel):
 
-        # Validação — evita crash silencioso se não houver dados
+        # Validation — avoids silent crash if there is no data
         if data is None or data.shape[1] == 0:
             print("AVISO: sem dados EEG para guardar.")
             return

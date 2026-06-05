@@ -1,5 +1,5 @@
 # ============================================================
-# FILE: browse_epochs.py
+# FILE: visualize/browse_epochs.py
 #
 # Interactive viewer: browse filtered epochs one by one.
 # Shows all channels for a single epoch at a time.
@@ -31,7 +31,7 @@ H_FREQ      = 30.0
 EPOCH_TMIN  = 0.5
 EPOCH_TMAX  = 4.5
 
-CHANNEL_NAMES = ["FCz", "P3", "CP4", "CP3", "P4", "C3", "FC4", "FC3"]
+CHANNEL_NAMES = ["F3", "F4", "FC4", "C3", "FCz", "CP3", "CP4", "CPz"]
 
 CLASS_COLORS = {
     "REST":  "#888888",
@@ -129,13 +129,9 @@ def build_epochs_per_class(raw_f, markers, sfreq, eeg_start_unix, metadata):
 # ============================================================
 
 class EpochBrowser:
-    """
-    Browse epochs one by one across all classes.
-    Each epoch shows all channels stacked in a grid.
-    """
 
     def __init__(self, epochs_per_class):
-        # Build a flat list of (class_name, epoch_index) entries
+
         self.epochs_per_class = epochs_per_class
         self.class_names      = list(epochs_per_class.keys())
 
@@ -291,7 +287,6 @@ class EpochBrowser:
                 ax.set_ylabel("µV", fontsize=7, color="#888899")
             ax.grid(True, alpha=0.2, color="#333355")
 
-            # Y-axis symmetric around 0
             ylim = max(abs(signal.min()), abs(signal.max())) * 1.15 or 1
             ax.set_ylim(-ylim, ylim)
 
@@ -316,7 +311,6 @@ class EpochBrowser:
         if self.current_idx > 0:
             self.current_idx -= 1
         else:
-            # Wrap to last epoch of previous class
             ci = self.class_names.index(self.current_class)
             if ci > 0:
                 self.current_class = self.class_names[ci - 1]
@@ -327,7 +321,6 @@ class EpochBrowser:
         if self.current_idx < self._n_epochs() - 1:
             self.current_idx += 1
         else:
-            # Wrap to first epoch of next class
             ci = self.class_names.index(self.current_class)
             if ci < len(self.class_names) - 1:
                 self.current_class = self.class_names[ci + 1]

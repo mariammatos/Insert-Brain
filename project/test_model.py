@@ -1,19 +1,20 @@
 # ============================================================
 # FILE: test_model.py
 #
-# Testa o modelo treinado em tempo real.
-# A pessoa pensa numa classe, o modelo classifica,
-# e depois pede validação (certo/errado) para calcular métricas.
+# Real-time model testing for motor imagery EEG.
+# Runs trials, classifies EEG windows, and collects accuracy
+# metrics with optional user validation.
 #
-# Uso: python test_model.py <session_path>
-# Ex:  python test_model.py data/P001_20250521_143000
+# Usage:
+#   python test_model.py <session_path>
+#   python test_model.py data/P001_20250521_143000
 #
-# PRÉ-PROCESSAMENTO IDÊNTICO AO TREINO (train_subject_model.py):
-#   1. Referência média (average reference)
-#   2. Filtro FIR bandpass 8-30 Hz  (fir_design="firwin", como MNE)
-#   3. Filtro notch 25 Hz e 50 Hz
-#   4. Janela de 4.0 s (= EPOCH_TMAX - EPOCH_TMIN = 4.5 - 0.5)
-#   5. Pipeline CSP → Scaler → LDA (guardado no .pkl, não replicado aqui)
+# Preprocessing matches training pipeline:
+#   1. Average reference
+#   2. Bandpass FIR 8–30 Hz
+#   3. Notch filters (25 Hz, 50 Hz)
+#   4. 4s classification window
+#   5. CSP → Scaler → LDA pipeline (loaded from .pkl)
 # ============================================================
 
 import os
@@ -21,21 +22,18 @@ import sys
 import time
 import joblib
 import numpy as np
-from scipy.signal import firwin, sosfilt, sosfiltfilt, butter, iirnotch
-
-import mne
+from scipy.signal import firwin, sosfiltfilt, iirnotch
 
 from brainflow.board_shim import BoardShim, BrainFlowInputParams
-
 from config import CONFIG
 
 
 # ============================================================
-# CONFIGURAÇÃO — deve coincidir com train_subject_model.py
+# CONFIG
 # ============================================================
 
-L_FREQ   = 8.0
-H_FREQ   = 30.0
+L_FREQ = 8.0
+H_FREQ = 30.0
 NOTCH_FREQS = [25.0, 50.0]
 
 # Janela de classificação = EPOCH_TMAX - EPOCH_TMIN do treino
@@ -73,7 +71,7 @@ RESET  = "\033[0m"
 
 
 # ============================================================
-# PRÉ-PROCESSAMENTO — idêntico ao train_subject_model.py
+# PREPROCESSING
 # ============================================================
 
 def make_fir_bandpass(l_freq, h_freq, sfreq):
@@ -91,9 +89,7 @@ def make_fir_bandpass(l_freq, h_freq, sfreq):
     n_taps = int(round(0.34 * sfreq))
     if n_taps % 2 == 0:
         n_taps += 1
-
-    b = firwin(n_taps, [l_freq, h_freq], pass_zero=False, fs=sfreq)
-    return b
+    return firwin(n_taps, [l_freq, h_freq], pass_zero=False, fs=sfreq)
 
 
 def make_notch_sos(freq, sfreq, quality=30.0):
@@ -102,10 +98,8 @@ def make_notch_sos(freq, sfreq, quality=30.0):
     quality=30 é o valor por omissão do MNE para notch_filter.
     """
     b, a = iirnotch(freq, quality, fs=sfreq)
-    # Converte para SOS para estabilidade numérica
     from scipy.signal import tf2sos
-    sos = tf2sos(b, a)
-    return sos
+    return tf2sos(b, a)
 
 
 def preprocess_window(eeg_raw, sfreq, fir_b, notch_sos_list, n_need, n_total):
@@ -155,19 +149,17 @@ def preprocess_window(eeg_raw, sfreq, fir_b, notch_sos_list, n_need, n_total):
 
 
 # ============================================================
-# LOAD MODELS
+# MODEL LOADING
 # ============================================================
 
 def load_models(session_path):
-
     paths = {
-        "gating":    os.path.join(session_path, "model_gating.pkl"),
-        "axis":      os.path.join(session_path, "model_axis.pkl"),
+        "gating": os.path.join(session_path, "model_gating.pkl"),
+        "axis": os.path.join(session_path, "model_axis.pkl"),
         "direction": os.path.join(session_path, "model_direction.pkl"),
     }
 
     missing = [k for k, p in paths.items() if not os.path.exists(p)]
-
     if missing:
         raise FileNotFoundError(
             f"Modelos não encontrados em {session_path}: {missing}\n"
