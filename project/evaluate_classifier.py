@@ -6,7 +6,6 @@
 #   1. Average reference
 #   2. 8–30 Hz bandpass (FIR)
 #   3. 50 Hz notch (FIR)
-#   4. ICA muscle artifact removal
 #
 # Blind evaluation: no marker usage for window selection.
 # Fixed timing is used (CUE_DURATION + EPOCH_TMIN/TMAX).
@@ -29,7 +28,6 @@ import numpy as np
 import pandas as pd
 import joblib
 import mne
-from mne.preprocessing import ICA
 
 warnings.filterwarnings("ignore")
 mne.set_log_level("ERROR")
@@ -48,8 +46,8 @@ except Exception:
 EPOCH_TMIN  = 1.0
 EPOCH_TMAX  = 3.5
 
-# Estrutura temporal dos blocos — tem de coincidir com o generate
-CUE_DURATION   = 2.0   # segundos de cue antes do mi_start
+# Time structure of the epochs — must be the same as in the acquisition/data generation
+CUE_DURATION   = 2.0   # seconds before mi_start
 BLOCK_DURATION = 6.0   # CUE_DURATION + MI_DURATION (2.0 + 4.0)
 
 # Absolute window within each block that the classifier uses:
@@ -86,7 +84,7 @@ CLASS_COLOR = {0: DIM, 1: CYAN, 2: MAGENTA, 3: YELLOW}
 
 def preprocess_mne(eeg, sfreq, ch_names):
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    raw  = mne.io.RawArray(eeg, info, verbose=False)
+    raw = mne.io.RawArray(eeg, info, verbose=False)
 
     montage = mne.channels.make_standard_montage("standard_1005")
     raw.set_montage(montage, on_missing="ignore", verbose=False)
@@ -94,15 +92,6 @@ def preprocess_mne(eeg, sfreq, ch_names):
     raw.set_eeg_reference("average", verbose=False)
     raw.filter(L_FREQ, H_FREQ, fir_design="firwin", verbose=False)
     raw.notch_filter(freqs=NOTCH_FREQ, method="fir", verbose=False)
-
-    n_components = min(len(ch_names) - 1, 7)
-    ica = ICA(n_components=n_components, random_state=RANDOM_SEED,
-              method="fastica", max_iter=500)
-    ica.fit(raw, verbose=False)
-    muscle_idx, _ = ica.find_bads_muscle(raw, verbose=False)
-    if muscle_idx:
-        ica.exclude = muscle_idx
-        ica.apply(raw, verbose=False)
 
     return raw
 
