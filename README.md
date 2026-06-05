@@ -11,6 +11,14 @@ This project combines EEG signal processing with machine learning to create a re
 - **Real-time Control**: Using trained models to control a robot based on EEG signals
 - **Data Visualization**: Exploring and analyzing EEG sessions and trained models
 
+## Team
+
+| Name | Contact |
+| --- | --- |
+| Afonso Sousa | up202207498@up.pt |
+| Maria Matos | up202208005@up.pt |
+| Sara Gouveia | up202206979@up.pt |
+
 ## Project Structure
 
 ```
