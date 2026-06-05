@@ -587,33 +587,6 @@ def explore_session(session_path):
     print(f"Figures saved in: {session_path}")
     print("=" * 60)
 
-    print("""
-        WHAT TO LOOK FOR IN THE FIGURES:
-
-        explore_spectra.png
-            → LEFT/RIGHT curves should differ from FEET in mu and beta bands
-            → If all curves overlap: no distinguishable signal
-
-        explore_erd.png
-            → Blue (ERD = power decrease) should appear after t=0
-            → At C3 for LEFT, C4 for RIGHT, Cz for FEET
-            → If no blue: subject is not performing motor imagery
-
-        explore_topos.png
-            → LEFT should show more activity at C4, RIGHT at C3 (contralateral)
-            → FEET should show central activation (Cz)
-            → If all topographies look the same: no spatial difference
-
-        explore_csp.png
-            → Patterns should show activity at C3/C4/Cz
-            → If activity is at edge channels (FC3, FCz, CP3):
-            likely muscle or movement artefact
-
-        explore_raw_epochs.png
-            → Check for spikes, drift, or saturation
-            → Clean signal should be smooth and centred at 0
-    """)
-
 
 # ============================================================
 # ENTRY POINT

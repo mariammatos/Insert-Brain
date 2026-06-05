@@ -4,8 +4,8 @@
 # Checks the alpha peak (10 Hz) during eyes-open vs eyes-closed baseline.
 # Uses the baseline blocks recorded at the start of the session.
 #
-# What to look for: on the eyes-closed curve (orange) you should
-# see a clear bump peaking around 10 Hz that's absent or smaller
+# What to look for: on the eyes-closed curve (orange) there should
+# be a clear bump peaking around 10 Hz that's absent or smaller
 # on the eyes-open curve (blue). If both lines look identical,
 # electrode contact is poor. If eyes-closed shows the bump on
 # posterior channels (CP3, CP4, P3, P4) but not frontal ones
