@@ -31,13 +31,13 @@ mne.set_log_level("WARNING")
 
 
 # ============================================================
-# PARÂMETROS — devem ser iguais ao train_subject_model.py
+# PARAMETERS — must match train_subject_model.py
 # ============================================================
 
 L_FREQ     = 8.0
 H_FREQ     = 30.0
 EPOCH_TMIN = 0.5
-EPOCH_TMAX = 4.5    # janela larga para ver o ERD desenvolver-se
+EPOCH_TMAX = 4.5    # wide window to see the ERD develop
 N_CSP      = 4
 RANDOM_SEED = 42
 
@@ -100,9 +100,9 @@ def filter_raw(raw):
 
 def build_epochs_per_class(raw_f, markers, sfreq, eeg_start_unix, metadata):
     """
-    Devolve um dict {class_name: mne.Epochs} usando apenas markers
-    do tipo 'mi_start' — o onset real da imagética, não o cue.
-    Se não houver 'mi_start', cai back para todos os markers com label > 0.
+    Returns a dict {class_name: mne.Epochs} using only 'mi_start' markers
+    — the real motor imagery onset, not the cue.
+    If no 'mi_start' markers exist, falls back to all markers with label > 0.
     """
 
     classes = metadata.get("classes", {})
@@ -112,24 +112,24 @@ def build_epochs_per_class(raw_f, markers, sfreq, eeg_start_unix, metadata):
         for k, v in classes.items()
     }
 
-    # Usa mi_start se existir, senão usa cue_on
+    # Use mi_start if present, otherwise use cue_on
     if "mi_start" in markers["event"].values:
         cue_markers = markers[markers["event"] == "mi_start"].copy()
-        print("  A usar markers 'mi_start' como onset da imagética.")
+        print("  Using 'mi_start' markers as motor imagery onset.")
     else:
         cue_markers = markers[markers["label"] >= 0].copy()
-        # Remove duplicados por label+timestamp próximo (cue_on/mi_start/mi_end)
+        # Remove duplicates by nearby label+timestamp (cue_on/mi_start/mi_end)
         cue_markers = cue_markers.drop_duplicates(subset=["label"])
-        print("  'mi_start' não encontrado — a usar primeiro marker por label.")
+        print("  'mi_start' not found — using first marker per label.")
 
-    # Remove labels desconhecidos e baseline (-1)
+    # Remove unknown labels and baseline (-1)
     cue_markers = cue_markers[cue_markers["label"].isin(label_to_name.keys())]
     cue_markers = cue_markers[cue_markers["label"] >= 0]
 
     if len(cue_markers) == 0:
-        raise ValueError("Nenhum marker de imagética encontrado.")
+        raise ValueError("No motor imagery marker found.")
 
-    # Constrói eventos MNE
+    # Build MNE events
     events      = []
     bad_markers = []
 
@@ -144,7 +144,7 @@ def build_epochs_per_class(raw_f, markers, sfreq, eeg_start_unix, metadata):
         events.append([sample, 0, int(row["label"])])
 
     if bad_markers:
-        print(f"  ⚠ {len(bad_markers)} marker(s) fora do registo ignorados.")
+        print(f"  ⚠ {len(bad_markers)} out-of-record marker(s) ignored.")
 
     events     = np.array(events, dtype=int)
     event_map  = {name: info["label"] for name, info in classes.items() if info["label"] >= 0}
@@ -157,7 +157,7 @@ def build_epochs_per_class(raw_f, markers, sfreq, eeg_start_unix, metadata):
         baseline=None, preload=True, verbose=False
     )
 
-    print(f"\n  Epochs por classe:")
+    print(f"\n  Epochs per class:")
     epochs_per_class = {}
     for name, label in event_map.items():
         try:
@@ -165,26 +165,26 @@ def build_epochs_per_class(raw_f, markers, sfreq, eeg_start_unix, metadata):
             print(f"    {name:>8}: {len(ep)} epochs")
             epochs_per_class[name] = ep
         except KeyError:
-            print(f"    {name:>8}: 0 epochs (sem dados)")
+            print(f"    {name:>8}: 0 epochs (no data)")
 
     return epochs_per_class
 
 
 # ============================================================
-# FIGURA 1: ESPECTROS POR CLASSE
+# FIGURE 1: SPECTRA PER CLASS
 # ============================================================
 
 def plot_spectra(epochs_per_class, sfreq, session_path):
     """
-    PSD média por classe nos canais C3, Cz, C4.
-    Mostra onde as classes se separam espectralmente.
+    Mean PSD per class in channels C3, Cz, C4.
+    Shows where classes separate spectrally.
     """
 
     #target_chs = ["C3", "Cz", "C4"]
     target_chs = CHANNEL_NAMES
 
     fig, axes = plt.subplots(2, 4, figsize=(16, 8), sharey=False)
-    fig.suptitle("Espectros médios por classe", fontsize=13, fontweight="bold")
+    fig.suptitle("Average spectra per class", fontsize=13, fontweight="bold")
 
     for i, ch_name in enumerate(target_chs):
         ax = axes[i // 4, i % 4]
@@ -207,7 +207,7 @@ def plot_spectra(epochs_per_class, sfreq, session_path):
             psd_mean = np.mean(psds, axis=0)
             psd_std  = np.std(psds, axis=0)
 
-            # Só banda 4-40 Hz
+            # Only 4-40 Hz band
             mask = (freqs >= 4) & (freqs <= 40)
             f    = freqs[mask]
             m    = psd_mean[mask]
@@ -217,12 +217,12 @@ def plot_spectra(epochs_per_class, sfreq, session_path):
             ax.semilogy(f, m, label=class_name, color=color, linewidth=2)
             ax.fill_between(f, m - s, m + s, alpha=0.15, color=color)
 
-        # Bandas de referência
+        # Reference bands
         ax.axvspan(8,  12, alpha=0.08, color="orange", label="mu (8-12Hz)")
         ax.axvspan(13, 30, alpha=0.08, color="blue",   label="beta (13-30Hz)")
 
         ax.set_title(ch_name, fontsize=11)
-        ax.set_xlabel("Frequência (Hz)")
+        ax.set_xlabel("Frequency (Hz)")
         ax.set_ylabel("PSD (V²/Hz)" if i % 4 == 0 else "")
         ax.legend(fontsize=7)
         ax.grid(True, alpha=0.3)
@@ -231,17 +231,17 @@ def plot_spectra(epochs_per_class, sfreq, session_path):
     path = os.path.join(session_path, "explore_spectra.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"  ✓ Espectros: {path}")
+    print(f"  ✓ Spectra: {path}")
 
 
 # ============================================================
-# FIGURA 2: ERD/ERS TIME-FREQUENCY
+# FIGURE 2: ERD/ERS TIME-FREQUENCY
 # ============================================================
 
 def plot_erd(epochs_per_class, session_path):
     """
-    Time-frequency (multitaper) médio por classe em C3 e C4.
-    O ERD aparece como descida de potência (azul) após o onset.
+    Mean time-frequency (multitaper) per class in C3 and C4.
+    ERD appears as a power decrease (blue) after onset.
     """
 
     target_chs = ["FC3", "FC4"]
@@ -258,7 +258,7 @@ def plot_erd(epochs_per_class, session_path):
     )
     fig.suptitle(
         "Time-Frequency (ERD/ERS) — onset = 0s\n"
-        "Azul = descida de potência (ERD = bom sinal de MI)",
+        "Blue = power decrease (ERD = good MI signal)",
         fontsize=11, fontweight="bold"
     )
 
@@ -275,7 +275,7 @@ def plot_erd(epochs_per_class, session_path):
                 continue
 
             try:
-                # .copy() evita que pick_channels modifique o epochs original
+                # .copy() prevents pick_channels from modifying the original epochs
                 power = tfr_multitaper(
                     ep.copy().pick_channels([ch_name], ordered=False),
                     freqs=freqs,
@@ -286,11 +286,11 @@ def plot_erd(epochs_per_class, session_path):
                     verbose=False
                 )
 
-                # average=True devolve shape (1, n_freqs, n_times) — média sobre epochs
+                # average=True returns shape (1, n_freqs, n_times) — mean over epochs
                 pwr = power.data  # shape: (n_channels, n_freqs, n_times)
-                pwr_ch = pwr[0]   # shape: (n_freqs, n_times) — primeiro (único) canal
+                pwr_ch = pwr[0]   # shape: (n_freqs, n_times) — first (only) channel
 
-                # Baseline: média dos primeiros 0.5s após EPOCH_TMIN
+                # Baseline: mean of the first 0.5s after EPOCH_TMIN
                 baseline_mask  = (power.times >= power.times[0]) & (power.times < power.times[0] + 0.5)
                 baseline_power = pwr_ch[:, baseline_mask].mean(axis=-1, keepdims=True)
                 erd            = 10 * np.log10(pwr_ch / (baseline_power + 1e-30))
@@ -308,15 +308,15 @@ def plot_erd(epochs_per_class, session_path):
                 ax.axhline(8,  color="white", linewidth=0.8, linestyle=":")
 
             except Exception as e:
-                ax.text(0.5, 0.5, f"Erro:\n{e}", ha="center", va="center",
+                ax.text(0.5, 0.5, f"Error:\n{e}", ha="center", va="center",
                         transform=ax.transAxes, fontsize=7)
 
             ax.set_title(f"{class_name} — {ch_name}", fontsize=9)
-            ax.set_xlabel("Tempo (s)")
+            ax.set_xlabel("Time (s)")
             ax.set_ylabel("Freq (Hz)" if col == 0 else "")
 
     if im is not None:
-        fig.subplots_adjust(right=0.88, hspace=0.4)   # abre espaço à direita
+        fig.subplots_adjust(right=0.88, hspace=0.4)   # make room on the right
         cbar_ax = fig.add_axes([0.91, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
         fig.colorbar(im, cax=cbar_ax, label="ERD (dB)")
     else:
@@ -328,13 +328,13 @@ def plot_erd(epochs_per_class, session_path):
 
 
 # ============================================================
-# FIGURA 3: TOPOGRAFIAS DE POTÊNCIA
+# FIGURE 3: POWER TOPOGRAPHIES
 # ============================================================
 
 def plot_topos(epochs_per_class, session_path):
     """
-    Topografia da potência média nas bandas mu e beta por classe.
-    Deve mostrar activação assimétrica em C3/C4 para LEFT/RIGHT.
+    Mean power topography in mu and beta bands per class.
+    Should show asymmetric activation in C3/C4 for LEFT/RIGHT.
     """
 
     bands = {
@@ -350,7 +350,7 @@ def plot_topos(epochs_per_class, session_path):
         figsize=(n_bands * 3, n_classes * 2.5),
         squeeze=False
     )
-    fig.suptitle("Topografias de potência por classe e banda",
+    fig.suptitle("Power topographies by class and band",
                  fontsize=11, fontweight="bold")
 
     from scipy.signal import welch
@@ -397,19 +397,19 @@ def plot_topos(epochs_per_class, session_path):
     path = os.path.join(session_path, "explore_topos.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"  ✓ Topografias: {path}")
+    print(f"  ✓ Topographies: {path}")
 
 
 # ============================================================
-# FIGURA 4: CSP PATTERNS
+# FIGURE 4: CSP PATTERNS
 # ============================================================
 
 def plot_csp_patterns(epochs_per_class, session_path):
     """
-    Treina CSP para cada par de classes e mostra os patterns.
-    Se os patterns mostrarem actividade centromótora (C3/C4/Cz)
-    é bom sinal — o CSP encontrou algo real.
-    Se mostrarem eléctrodos de borda (FC3, FCz) é provável artefacto.
+    Train CSP for each class pair and show the patterns.
+    If the patterns show centromotor activity (C3/C4/Cz)
+    it is a good sign — the CSP found something real.
+    If they show edge electrodes (FC3, FCz) it is likely artifact.
     """
 
     pairs = [
@@ -425,11 +425,11 @@ def plot_csp_patterns(epochs_per_class, session_path):
     ]
 
     if not valid_pairs:
-        print("  ⚠ Sem pares de classes com dados suficientes para CSP.")
+        print("  ⚠ No class pairs with enough data for CSP.")
         return
 
     n_pairs  = len(valid_pairs)
-    n_comps  = min(N_CSP, 4)   # mostra no máximo 4 componentes
+    n_comps  = min(N_CSP, 4)   # show at most 4 components
 
     fig, axes = plt.subplots(
         n_pairs, n_comps * 2,
@@ -437,7 +437,7 @@ def plot_csp_patterns(epochs_per_class, session_path):
         squeeze=False
     )
     fig.suptitle(
-        "CSP Patterns — actividade centromótora (C3/C4/Cz) é bom sinal",
+        "CSP Patterns — centromotor activity (C3/C4/Cz) is a good sign",
         fontsize=11, fontweight="bold"
     )
 
@@ -453,8 +453,8 @@ def plot_csp_patterns(epochs_per_class, session_path):
             csp = CSP(n_components=n_comps, reg="ledoit_wolf", log=True)
             csp.fit(X, y)
 
-            # patterns_ são os patterns espaciais (n_components, n_channels)
-            patterns = csp.patterns_[:n_comps * 2]   # primeiros e últimos
+            # patterns_ are the spatial patterns (n_components, n_channels)
+            patterns = csp.patterns_[:n_comps * 2]   # first and last
 
             info_plot = ep_a.info
 
@@ -482,7 +482,7 @@ def plot_csp_patterns(epochs_per_class, session_path):
 
         except Exception as e:
             axes[row][0].text(
-                0.5, 0.5, f"CSP falhou:\n{e}",
+                0.5, 0.5, f"CSP failed:\n{e}",
                 ha="center", va="center",
                 transform=axes[row][0].transAxes, fontsize=7
             )
@@ -495,14 +495,14 @@ def plot_csp_patterns(epochs_per_class, session_path):
 
 
 # ============================================================
-# FIGURA 5: SINAL RAW POR CANAL E CLASSE (sanity check)
+# FIGURE 5: RAW SIGNAL PER CHANNEL AND CLASS (sanity check)
 # ============================================================
 
 def plot_raw_epochs(epochs_per_class, session_path):
     """
-    Média de epochs por classe em C3, Cz, C4.
-    Não deve ter artefactos óbvios (picos, drift, saturação).
-    Se a média de epochs tiver forma de onda suave é bom sinal.
+    Mean epochs per class in C3, Cz, C4.
+    Should not contain obvious artifacts (spikes, drift, saturation).
+    A smooth waveform mean is a good sign.
     """
 
     #target_chs = ["C3", "Cz", "C4"]
@@ -510,8 +510,8 @@ def plot_raw_epochs(epochs_per_class, session_path):
 
     fig, axes = plt.subplots(2, 4, figsize=(16, 8), sharey=False)
     fig.suptitle(
-        "Média de epochs por classe (sinal filtrado 8-30Hz)\n"
-        "Verifica artefactos: picos, drift, saturação",
+        "Mean epochs per class (8-30Hz filtered signal)\n"
+        "Check for artifacts: spikes, drift, saturation",
         fontsize=11, fontweight="bold"
     )
 
@@ -537,7 +537,7 @@ def plot_raw_epochs(epochs_per_class, session_path):
         ax.axvline(0, color="black", linewidth=1, linestyle="--", alpha=0.5)
         ax.axhline(0, color="black", linewidth=0.5, alpha=0.3)
         ax.set_title(ch_name, fontsize=11)
-        ax.set_xlabel("Tempo (s)")
+        ax.set_xlabel("Time (s)")
         ax.set_ylabel("Amplitude (µV)" if i % 4 == 0 else "")
         ax.legend(fontsize=7)
         ax.grid(True, alpha=0.3)
@@ -556,26 +556,26 @@ def plot_raw_epochs(epochs_per_class, session_path):
 def explore_session(session_path):
 
     print("\n" + "=" * 60)
-    print("ANÁLISE EXPLORATÓRIA DA SESSÃO EEG")
-    print(f"Sessão: {session_path}")
+    print("EEG SESSION EXPLORATORY ANALYSIS")
+    print(f"Session: {session_path}")
     print("=" * 60)
 
-    print("\n[1/3] A carregar e pré-processar dados...")
+    print("\n[1/3] Loading and preprocessing data...")
     eeg_df, markers, metadata = load_session(session_path)
     raw, eeg_start_unix, sfreq = build_raw(eeg_df, metadata)
     raw_f = filter_raw(raw)
 
-    print(f"  EEG: {len(eeg_df)} amostras @ {sfreq} Hz")
-    print(f"  Canais: {CHANNEL_NAMES[:len(metadata['eeg_channels'])]}")
-    print(f"\n  Markers disponíveis:")
+    print(f"  EEG: {len(eeg_df)} samples @ {sfreq} Hz")
+    print(f"  Channels: {CHANNEL_NAMES[:len(metadata['eeg_channels'])]}")
+    print(f"\n  Available markers:")
     print(markers.groupby(["event", "label"]).size().to_string())
 
-    print("\n[2/3] A extrair epochs por classe...")
+    print("\n[2/3] Extracting epochs per class...")
     epochs_per_class = build_epochs_per_class(
         raw_f, markers, sfreq, eeg_start_unix, metadata
     )
 
-    print("\n[3/3] A gerar figuras...")
+    print("\n[3/3] Generating figures...")
     plot_spectra(epochs_per_class, sfreq, session_path)
     plot_erd(epochs_per_class, session_path)
     plot_topos(epochs_per_class, session_path)
@@ -583,8 +583,8 @@ def explore_session(session_path):
     plot_raw_epochs(epochs_per_class, session_path)
 
     print("\n" + "=" * 60)
-    print("ANÁLISE CONCLUÍDA")
-    print(f"Figuras guardadas em: {session_path}")
+    print("ANALYSIS COMPLETE")
+    print(f"Figures saved in: {session_path}")
     print("=" * 60)
 
     print("""
@@ -624,7 +624,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2:
         session_path = sys.argv[1]
     else:
-        # Usa sessão mais recente automaticamente
+        # Auto-select the latest session automatically
         try:
             sessions = sorted([
                 os.path.join("data", d)
@@ -633,12 +633,14 @@ if __name__ == "__main__":
                 and os.path.exists(os.path.join("data", d, "eeg_raw.csv"))
             ])
             if not sessions:
-                raise FileNotFoundError
+                print("No session found in data/")
+                print("Usage: python explore_session.py data/P001_20250521_143000")
+                sys.exit(1)
             session_path = sessions[-1]
-            print(f"A usar sessão mais recente: {session_path}")
+            print(f"Auto-selecting latest session: {session_path}")
         except FileNotFoundError:
-            print("Nenhuma sessão encontrada em data/")
-            print("Uso: python explore_session.py data/P001_20250521_143000")
+            print("No session found in data/")
+            print("Usage: python explore_session.py data/P001_20250521_143000")
             sys.exit(1)
 
     explore_session(session_path)

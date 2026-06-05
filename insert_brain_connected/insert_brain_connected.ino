@@ -1,22 +1,22 @@
 // ============================================================
 // FILE: insert_brain_connected.ino
 //
-// Firmware para controlo do robô via BCI (Insert-Brain).
+// Firmware for robot control via BCI (Insert-Brain).
 //
-// Aceita dois protocolos via Serial (9600 baud):
+// Accepts two serial protocols (9600 baud):
 //
-//   1. PROTOCOLO BCI (enviado por test_model_connected.py):
-//      LEFT   → servo activo recua  (-stepSize)
-//      RIGHT  → servo activo avança (+stepSize)
-//      FEET   → muda servo activo (0→1→2→3→0→...)
-//      REST   → sem movimento
-//      STOP   → posição neutra em todos os servos
+// 1. BCI PROTOCOL (from test_model_connected.py):
+//    LEFT   → active servo moves backward (-stepSize)
+//    RIGHT  → active servo moves forward (+stepSize)
+//    FEET   → switch active servo (0→1→2→3→0→...)
+//    REST   → no movement
+//    STOP   → move all servos to neutral position
 //
-//   2. PROTOCOLO MANUAL (compatível com insert_brain.ino):
-//      +1  -1  +2  -2  +3  -3  +4  -4
-//      Repetição do dígito = múltiplos passos: +111 = 3 passos
+// 2. MANUAL PROTOCOL (compatible with insert_brain.ino):
+//    +1 -1 +2 -2 +3 -3 +4 -4
+//    Repeated digit = multiple steps (e.g. +111 = 3 steps)
 //
-// Responde sempre com confirmação pela Serial.
+// Always replies with a Serial confirmation.
 // ============================================================
 
 #include <Servo.h>
@@ -26,18 +26,18 @@ Servo Servo_1;
 Servo Servo_2;
 Servo Servo_3;
 
-// Posições actuais
+// Current positions
 int M0 = 90, M1 = 90, M2 = 90, M3 = 160;
 
-// Limites de ângulo
+// Angle limits
 int minAngle[4]    = {10,  10,  10,  100};
 int maxAngle[4]    = {170, 170, 170, 170};
 int neutralAngle[4] = {90,  90,  90,  160};
 
-// Graus por passo de comando
+// Degrees per command step
 int stepSize = 5;
 
-// Servo actualmente seleccionado pelo BCI (índice 0-3)
+// Servo currently selected by BCI (index 0-3)
 int activeServo = 0;
 
 bool clenchDisabled = true;
@@ -57,7 +57,7 @@ void setup()
   Servo_3.write(M3);
 
   Serial.println("INSERT-BRAIN ready.");
-  Serial.print("Servo activo: ");
+  Serial.print("Active servo: ");
   Serial.println(activeServo + 1);
   Serial.println("BCI: LEFT RIGHT FEET REST STOP");
   Serial.println("Manual: +1 -1 +2 -2 +3 -3 +4 -4");
@@ -84,7 +84,7 @@ void processCommand(String cmd)
   {
     Serial.print("BCI: LEFT -> servo ");
     Serial.print(activeServo + 1);
-    Serial.println(" recua");
+    Serial.println(" moves backward");
     moveServo(activeServo, -stepSize);
     return;
   }
@@ -93,45 +93,45 @@ void processCommand(String cmd)
   {
     Serial.print("BCI: RIGHT -> servo ");
     Serial.print(activeServo + 1);
-    Serial.println(" avança");
+    Serial.println(" moves forward");
     moveServo(activeServo, +stepSize);
     return;
   }
 
   if (cmd == "FEET")
   {
-    // Cicla para o próximo servo
+    // Cycle to the next servo
     activeServo = (activeServo + 1) % (clenchDisabled ? 3 : 4);
-    Serial.print("BCI: FEET -> servo activo agora é ");
+    Serial.print("BCI: FEET -> active servo is now ");
     Serial.println(activeServo + 1);
     return;
   }
 
   if (cmd == "REST")
   {
-    Serial.println("BCI: REST -> sem movimento");
+    Serial.println("BCI: REST -> no movement");
     return;
   }
 
   if (cmd == "STOP")
   {
-    Serial.println("BCI: STOP -> posição neutra");
+    Serial.println("BCI: STOP -> neutral position");
     goNeutral();
     return;
   }
 
-  // ── PROTOCOLO MANUAL ──────────────────────────────────────
+  // ── MANUAL PROTOCOL ──────────────────────────────────────
 
   if (cmd.length() < 2)
   {
-    Serial.println("Comando inválido.");
+    Serial.println("Invalid command.");
     return;
   }
 
   char dir = cmd.charAt(0);
   if (dir != '+' && dir != '-')
   {
-    Serial.println("Começa com + ou -");
+    Serial.println("Must start with + or -");
     return;
   }
 
@@ -140,7 +140,7 @@ void processCommand(String cmd)
 
   if (servoNum < 1 || servoNum > 4)
   {
-    Serial.println("Servo deve ser 1-4");
+    Serial.println("Servo must be 1-4");
     return;
   }
 
@@ -200,6 +200,6 @@ void goNeutral()
   }
 
   activeServo = 0;
-  Serial.println("Todos os servos -> posição neutra");
-  Serial.println("Servo activo reposto para 1");
+  Serial.println("All servos -> neutral position");
+  Serial.println("Active servo reset to 1");
 }

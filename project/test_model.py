@@ -36,15 +36,15 @@ L_FREQ = 8.0
 H_FREQ = 30.0
 NOTCH_FREQS = [25.0, 50.0]
 
-# Janela de classificação = EPOCH_TMAX - EPOCH_TMIN do treino
+# Classification window = EPOCH_TMAX - EPOCH_TMIN from training
 WINDOW_SEC = 4.0   # 4.5 - 0.5
 
-# Padding extra para o filtro não ter artefactos de borda
-# na região de interesse. Deve ser >= comprimento do filtro FIR / sfreq.
-# 2 s é seguro para os filtros usados pelo MNE a 250 Hz.
+# Extra padding so the filter does not have edge artifacts
+# in the region of interest. Must be >= FIR filter length / sfreq.
+# 2 s is safe for the filters used by MNE at 250 Hz.
 FILTER_PAD_SEC = 2.0
 
-# Tempo de preparação antes de cada trial (conta decrescente)
+# Preparation time before each trial (countdown)
 PREP_SEC = 5
 
 SYMBOLS = {
@@ -76,16 +76,16 @@ RESET  = "\033[0m"
 
 def make_fir_bandpass(l_freq, h_freq, sfreq):
     """
-    Cria coeficientes FIR bandpass com firwin, igual ao MNE por omissão.
-    Retorna coeficientes b para usar com sosfiltfilt via conversão.
+    Create FIR bandpass coefficients with firwin, matching MNE defaults.
+    Returns b coefficients for use with sosfiltfilt via conversion.
 
-    O MNE usa fir_design="firwin" com transition_bandwidth automático.
-    Aqui replicamos com comprimento de filtro conservador (mesmo que o MNE
-    use para sinais de 250 Hz com estes parâmetros de corte).
+    MNE uses fir_design="firwin" with automatic transition bandwidth.
+    Here we replicate that with a conservative filter length (same as MNE
+    uses for 250 Hz signals with these cutoff parameters).
     """
-    # Comprimento do filtro: MNE usa tipicamente ~0.34 s de dados para
-    # 8 Hz com sfreq=250 → 85 amostras; arredondamos para garantir segurança.
-    # Fórmula MNE: n_taps = int(round(0.34 * sfreq)) | sempre ímpar
+    # Filter length: MNE typically uses ~0.34 s of data for
+    # 8 Hz at sfreq=250 → 85 samples; round up to be safe.
+    # MNE formula: n_taps = int(round(0.34 * sfreq)) | always odd
     n_taps = int(round(0.34 * sfreq))
     if n_taps % 2 == 0:
         n_taps += 1
@@ -94,8 +94,8 @@ def make_fir_bandpass(l_freq, h_freq, sfreq):
 
 def make_notch_sos(freq, sfreq, quality=30.0):
     """
-    Cria filtro notch IIR (biquad) como second-order sections.
-    quality=30 é o valor por omissão do MNE para notch_filter.
+    Create an IIR notch filter (biquad) as second-order sections.
+    quality=30 is the MNE default for notch_filter.
     """
     b, a = iirnotch(freq, quality, fs=sfreq)
     from scipy.signal import tf2sos
@@ -104,34 +104,34 @@ def make_notch_sos(freq, sfreq, quality=30.0):
 
 def preprocess_window(eeg_raw, sfreq, fir_b, notch_sos_list, n_need, n_total):
     """
-    Aplica o mesmo pré-processamento do treino a uma janela de EEG em bruto.
+    Apply the same preprocessing used in training to a raw EEG window.
 
     Parameters
     ----------
-    eeg_raw        : np.ndarray (n_ch, n_samples_total)  — inclui padding
+    eeg_raw        : np.ndarray (n_ch, n_samples_total)  — includes padding
     sfreq          : float
-    fir_b          : np.ndarray — coeficientes FIR bandpass
-    notch_sos_list : list de np.ndarray — SOS de cada filtro notch
-    n_need         : int — amostras da janela final (sem padding)
-    n_total        : int — amostras totais capturadas (com padding)
+    fir_b          : np.ndarray — FIR bandpass coefficients
+    notch_sos_list : list of np.ndarray — SOS for each notch filter
+    n_need         : int — samples in the final window (without padding)
+    n_total        : int — total captured samples (with padding)
 
     Returns
     -------
-    window : np.ndarray (1, n_ch, n_need)  — pronto para clf.predict()
-             ou None se não houver amostras suficientes
+    window : np.ndarray (1, n_ch, n_need)  — ready for clf.predict()
+             or None if there are not enough samples
     """
     n_samples = eeg_raw.shape[1]
 
     if n_samples < n_need:
         return None
 
-    # Usa as últimas n_total amostras (ou tudo se for menos)
+    # Use the last n_total samples (or all samples if shorter)
     n_use = min(n_samples, n_total)
     eeg   = eeg_raw[:, -n_use:]
 
-    # --- [1] Referência média (average reference) ---
-    # Subtrai a média de todos os canais em cada instante de tempo,
-    # exatamente como raw.set_eeg_reference("average") no MNE.
+    # --- [1] Average reference ---
+    # Subtract the mean across all channels at each timepoint,
+    # exactly like raw.set_eeg_reference("average") in MNE.
     eeg = eeg - eeg.mean(axis=0, keepdims=True)
 
     # --- [2] Filtro FIR bandpass 8-30 Hz (mesmo que MNE firwin) ---
@@ -142,7 +142,7 @@ def preprocess_window(eeg_raw, sfreq, fir_b, notch_sos_list, n_need, n_total):
     for sos in notch_sos_list:
         eeg = sosfiltfilt(sos, eeg, axis=1)
 
-    # --- [4] Descarta padding — fica só a janela de classificação ---
+    # --- [4] Discard padding — keep only the classification window ---
     eeg_window = eeg[:, -n_need:]
 
     return eeg_window[np.newaxis, :, :]   # (1, n_ch, n_times)
@@ -162,15 +162,15 @@ def load_models(session_path):
     missing = [k for k, p in paths.items() if not os.path.exists(p)]
     if missing:
         raise FileNotFoundError(
-            f"Modelos não encontrados em {session_path}: {missing}\n"
-            f"Corre primeiro o main.py para treinar o modelo."
+                f"Models not found in {session_path}: {missing}\n"
+                f"Run main.py first to train the model."
         )
 
     clf_gate = joblib.load(paths["gating"])
     clf_axis = joblib.load(paths["axis"])
     clf_dir  = joblib.load(paths["direction"])
 
-    print(f"{GREEN}✓ Modelos carregados de {session_path}{RESET}")
+    print(f"{GREEN}✓ Models loaded from {session_path}{RESET}")
 
     # Confirma que os pipelines têm os passos esperados
     for name, clf in [("gating", clf_gate), ("axis", clf_axis), ("direction", clf_dir)]:
@@ -211,25 +211,25 @@ def stop_board(board):
 
 
 # ============================================================
-# ACQUIRE + PRÉ-PROCESSAR + CLASSIFICAR
+# ACQUIRE + PREPROCESS + CLASSIFY
 # ============================================================
 
 def get_window(board, eeg_channels, sfreq,
                fir_b, notch_sos_list,
                window_sec, pad_sec):
     """
-    Aguarda window_sec + pad_sec segundos, aplica pré-processamento
-    idêntico ao treino e devolve (1, n_ch, n_times).
+    Wait window_sec + pad_sec seconds, apply training-identical preprocessing,
+    and return (1, n_ch, n_times).
 
-    O sinal bruto é em µV (BrainFlow devolve em µV).
-    O treino converte para V (×1e-6) mas os CSP/Scaler/LDA
-    aprenderam com V — por isso convertemos aqui também.
+    The raw signal is in µV (BrainFlow returns µV).
+    Training converts to V (x1e-6), and CSP/Scaler/LDA
+    were trained on V — so we convert here too.
     """
     total_sec = window_sec + pad_sec
     n_need    = int(round(sfreq * window_sec))
     n_total   = int(round(sfreq * total_sec))
 
-    # Limpa buffer antes de começar a contagem
+    # Clear the buffer before starting the timer
     board.get_board_data()
 
     time.sleep(total_sec)
@@ -278,16 +278,16 @@ def run_trial(board, eeg_channels, sfreq,
               clf_gate, clf_axis, clf_dir,
               target_label):
     """
-    Corre um trial: conta decrescente → imagética → classificação → validação.
-    Devolve (pred, correct).
+    Run a trial: countdown → imagery → classification → validation.
+    Returns (pred, correct).
     """
     # Conta decrescente
     for i in range(PREP_SEC, 0, -1):
-        print(f"\r  {DIM}A começar em {i}...{RESET}  ", end="", flush=True)
+        print(f"\r  {DIM}Starting in {i}...{RESET}  ", end="", flush=True)
         time.sleep(1.0)
 
     print(f"\r  {BOLD}{CYAN}PENSA: {SYMBOLS[target_label]} {NAMES[target_label]}{RESET}          ")
-    print(f"  {DIM}(a classificar {WINDOW_SEC:.0f}s de sinal + {FILTER_PAD_SEC:.0f}s padding de filtro...){RESET}")
+    print(f"  {DIM}(classifying {WINDOW_SEC:.0f}s of signal + {FILTER_PAD_SEC:.0f}s filter padding...){RESET}")
 
     # Adquire, pré-processa e classifica
     window = get_window(
@@ -297,7 +297,7 @@ def run_trial(board, eeg_channels, sfreq,
     )
 
     if window is None:
-        print(f"  {RED}ERRO: sem dados EEG suficientes.{RESET}")
+        print(f"  {RED}ERROR: insufficient EEG data.{RESET}")
         return None, None
 
     pred, path = classify(window, clf_gate, clf_axis, clf_dir)
@@ -308,27 +308,27 @@ def run_trial(board, eeg_channels, sfreq,
     for step in path:
         print(f"  {DIM}{step}{RESET}")
     print(f"  {'─' * 40}")
-    print(f"  Classificação: {BOLD}{CYAN}{SYMBOLS[pred]} {NAMES[pred]}{RESET}")
+    print(f"  Classification: {BOLD}{CYAN}{SYMBOLS[pred]} {NAMES[pred]}{RESET}")
     print(f"  {'─' * 40}")
 
     correct = (pred == target_label)
 
     if correct:
-        print(f"  {GREEN}{BOLD}✓ CORRETO{RESET}")
+        print(f"  {GREEN}{BOLD}✓ CORRECT{RESET}")
     else:
-        print(f"  {RED}{BOLD}✗ ERRADO{RESET}  (era {NAMES[target_label]})")
+        print(f"  {RED}{BOLD}✗ WRONG{RESET}  (was {NAMES[target_label]})")
 
     print()
     val = input(
-        f"  Concordas? [{GREEN}y{RESET}/{RED}n{RESET}/Enter=sim] "
+        f"  Agree? [{GREEN}y{RESET}/{RED}n{RESET}/Enter=yes] "
     ).strip().lower()
 
     if val == "n":
         print(f"  Classes: {', '.join(f'{v}={k}' for k, v in NAMES.items())}")
         try:
-            override = int(input("  Classe real (0/1/2/3): ").strip())
+            override = int(input("  True class (0/1/2/3): ").strip())
             correct  = (override == target_label)
-            print(f"  {DIM}Corrigido para {NAMES.get(override, str(override))}{RESET}")
+            print(f"  {DIM}Corrected to {NAMES.get(override, str(override))}{RESET}")
         except ValueError:
             pass
 
@@ -353,10 +353,10 @@ def print_metrics(results):
     accuracy  = n_correct / n_total
 
     print("\n" + "=" * 50)
-    print(f"{BOLD}RESULTADOS DA SESSÃO DE TESTE{RESET}")
+    print(f"{BOLD}TEST SESSION RESULTS{RESET}")
     print("=" * 50)
     print(f"  Trials:   {n_total}")
-    print(f"  Corretos: {n_correct}")
+    print(f"  Correct: {n_correct}")
     print(
         f"  Accuracy: "
         f"{GREEN if accuracy >= 0.7 else YELLOW if accuracy >= 0.5 else RED}"
@@ -419,9 +419,9 @@ def main(session_path):
 
     try:
         print(f"{BOLD}Comandos:{RESET}")
-        print(f"  Enter    → próximo trial (classe aleatória)")
+        print(f"  Enter    → next trial (random class)")
         print(f"  0/1/2/3  → escolhe a classe manualmente")
-        print(f"  q        → terminar e ver métricas\n")
+        print(f"  q        → quit and view metrics\n")
 
         trial_num = 0
 
@@ -443,7 +443,7 @@ def main(session_path):
             else:
                 target = int(np.random.choice(classes))
 
-            print(f"\n  {BOLD}Prepara-te para pensar em: {SYMBOLS[target]} {NAMES[target]}{RESET}")
+            print(f"\n  {BOLD}Prepare to think about: {SYMBOLS[target]} {NAMES[target]}{RESET}")
 
             pred, correct = run_trial(
                 board, eeg_channels, sfreq,
@@ -456,7 +456,7 @@ def main(session_path):
                 results.append((target, pred, correct))
 
     except KeyboardInterrupt:
-        print(f"\n\n  {YELLOW}Interrompido.{RESET}")
+        print(f"\n\n  {YELLOW}Interrupted.{RESET}")
 
     finally:
         stop_board(board)
@@ -478,12 +478,12 @@ if __name__ == "__main__":
         ])
 
         if not sessions:
-            print("Nenhuma sessão com modelos encontrada em data/")
-            print("Uso: python test_model.py data/P001_20250521_143000")
+            print("No session with models found in data/")
+            print("Usage: python test_model.py data/P001_20250521_143000")
             sys.exit(1)
 
         session_path = sessions[-1]
-        print(f"A usar sessão mais recente: {session_path}")
+        print(f"Using most recent session: {session_path}")
     else:
         session_path = sys.argv[1]
 

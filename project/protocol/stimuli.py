@@ -118,10 +118,10 @@ class Stimuli:
 
     def update_hud(self, elapsed_seconds, trials_done, current_class=""):
         """
-        Actualiza os elementos do HUD sem os desenhar ainda.
-        elapsed_seconds : segundos desde o início do treino
-        trials_done     : número de trials completos
-        current_class   : nome da classe actual (ex: "LEFT")
+        Update HUD elements without drawing them yet.
+        elapsed_seconds : seconds since the start of the session
+        trials_done     : number of completed trials
+        current_class   : current class name (e.g. "LEFT")
         """
 
         remaining = max(0.0, self._max_seconds - elapsed_seconds)
@@ -147,7 +147,7 @@ class Stimuli:
             self.bar_fill.fillColor = "#44BB77"
 
     def _draw_hud(self):
-        """Desenha todos os elementos do HUD."""
+        """Draw all HUD elements."""
         self.bar_bg.draw()
         self.bar_fill.draw()
         self.hud_time.draw()
@@ -160,7 +160,7 @@ class Stimuli:
     # ========================================================
 
     def _draw_phase(self, phase):
-        """Desenha o texto da fase actual (FIXAÇÃO, IMAGINA, etc.)"""
+        """Draw the current phase text (FIXATION, IMAGERY, etc.)."""
         self.phase_text.text = phase
         self.phase_text.draw()
 
@@ -170,8 +170,8 @@ class Stimuli:
 
     def show_fixation(self, elapsed=None, trials_done=None):
         """
-        Cruz de fixação.
-        Se elapsed e trials_done forem passados, mostra o HUD.
+        Fixation cross.
+        If elapsed and trials_done are passed, show the HUD.
         """
 
         if elapsed is not None:
@@ -184,8 +184,8 @@ class Stimuli:
 
     def show_cue(self, symbol, text, elapsed=None, trials_done=None):
         """
-        Seta / símbolo de cue + texto da classe.
-        Se elapsed e trials_done forem passados, mostra o HUD.
+        Cue arrow/symbol + class text.
+        If elapsed and trials_done are passed, show the HUD.
         """
 
         if elapsed is not None:
@@ -201,8 +201,8 @@ class Stimuli:
 
     def show_imagery(self, symbol, text, elapsed=None, trials_done=None):
         """
-        Igual ao show_cue mas com fase IMAGINA em destaque.
-        Usa cor mais viva para indicar que é a janela activa.
+        Same as show_cue but with the IMAGERY phase highlighted.
+        Uses a brighter color to indicate the active window.
         """
 
         if elapsed is not None:
@@ -213,7 +213,7 @@ class Stimuli:
         self.cue.text  = symbol
         self.info.text = text
 
-        # Destaca o símbolo durante a janela de imagery
+        # Highlight the symbol during the imagery interval
         original_color = self.cue.color
         self.cue.color = "#FFDD44"
         self.cue.draw()
@@ -223,7 +223,7 @@ class Stimuli:
         self.win.flip()
 
     def show_rest(self, elapsed=None, trials_done=None):
-        """Cruz de repouso entre trials com HUD."""
+        """Rest cross between trials with HUD."""
 
         if elapsed is not None:
             self.update_hud(elapsed, trials_done or 0)
@@ -234,7 +234,7 @@ class Stimuli:
         self.win.flip()
 
     def show_message(self, message):
-        """Mensagem full-screen (igual ao original, sem HUD)."""
+        """Full-screen message (same as original, without HUD)."""
 
         msg = visual.TextStim(
             self.win,
@@ -250,8 +250,8 @@ class Stimuli:
     def show_trial_feedback(self, trial_num, class_name, symbol,
                              elapsed, trials_done):
         """
-        Feedback breve entre trials:
-        mostra qual foi a classe do trial que acabou.
+        Brief feedback between trials:
+        shows which class the finished trial was.
         """
 
         self.update_hud(elapsed, trials_done, current_class="")

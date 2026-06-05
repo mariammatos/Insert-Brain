@@ -41,10 +41,10 @@ except Exception:
     _DEFAULT_SFREQ = 160
 
 # ============================================================
-# PARÂMETROS — têm de coincidir com o treino e com o generate
+# PARAMETERS — must match training and generate
 # ============================================================
 
-# Janela de classificação (relativa a mi_start, i.e. após o cue)
+# Classification window (relative to mi_start, i.e. after the cue)
 EPOCH_TMIN  = 1.0
 EPOCH_TMAX  = 3.5
 
@@ -52,13 +52,13 @@ EPOCH_TMAX  = 3.5
 CUE_DURATION   = 2.0   # segundos de cue antes do mi_start
 BLOCK_DURATION = 6.0   # CUE_DURATION + MI_DURATION (2.0 + 4.0)
 
-# Janela absoluta dentro de cada bloco que o classificador usa:
-#   bloco começa em t_block
-#   mi_start está em t_block + CUE_DURATION
-#   classificar de t_block + CUE_DURATION + EPOCH_TMIN
-#              até t_block + CUE_DURATION + EPOCH_TMAX
-CLASSIFY_ONSET  = CUE_DURATION + EPOCH_TMIN   # = 3.0s após início do bloco
-CLASSIFY_OFFSET = CUE_DURATION + EPOCH_TMAX   # = 5.5s após início do bloco
+# Absolute window within each block that the classifier uses:
+#   block starts at t_block
+#   mi_start occurs at t_block + CUE_DURATION
+#   classify from t_block + CUE_DURATION + EPOCH_TMIN
+#              until t_block + CUE_DURATION + EPOCH_TMAX
+CLASSIFY_ONSET  = CUE_DURATION + EPOCH_TMIN   # = 3.0s after block start
+CLASSIFY_OFFSET = CUE_DURATION + EPOCH_TMAX   # = 5.5s after block start
 
 L_FREQ      = 8.0
 H_FREQ      = 30.0
@@ -81,7 +81,7 @@ CLASS_COLOR = {0: DIM, 1: CYAN, 2: MAGENTA, 3: YELLOW}
 
 
 # ============================================================
-# PRÉ-PROCESSAMENTO
+# PREPROCESSING
 # ============================================================
 
 def preprocess_mne(eeg, sfreq, ch_names):
@@ -108,7 +108,7 @@ def preprocess_mne(eeg, sfreq, ch_names):
 
 
 # ============================================================
-# CARREGAR DADOS
+# LOAD DATA
 # ============================================================
 
 def load_session(session_path):
@@ -118,7 +118,7 @@ def load_session(session_path):
             eeg_path = p
             break
     else:
-        raise FileNotFoundError(f"Nenhum ficheiro EEG em '{session_path}'")
+        raise FileNotFoundError(f"No EEG file found in '{session_path}'")
 
     df      = pd.read_csv(eeg_path).sort_values("timestamp").reset_index(drop=True)
     ch_cols = [c for c in df.columns if c.startswith("ch_")]
@@ -137,14 +137,13 @@ def load_models(session_path):
     missing = [k for k in keys
                if not os.path.exists(os.path.join(session_path, f"model_{k}.pkl"))]
     if missing:
-        raise FileNotFoundError(f"Modelos não encontrados: {missing}")
+        raise FileNotFoundError(f"Models not found: {missing}")
     return tuple(joblib.load(os.path.join(session_path, f"model_{k}.pkl")) for k in keys)
 
 
 # ============================================================
-# CLASSIFICAÇÃO
-# Usa classes_ reais do modelo — robusto a qualquer mapeamento
-# de IDs interno do MNE.
+# CLASSIFICATION
+# Uses the model's actual classes_ — robust to any internal MNE ID mapping.
 # ============================================================
 
 def classify(epoch, clf_gate, clf_axis, clf_dir):
@@ -164,7 +163,7 @@ def classify(epoch, clf_gate, clf_axis, clf_dir):
 
 
 # ============================================================
-# MATRIZ DE CONFUSÃO
+# CONFUSION MATRIX
 # ============================================================
 
 def print_confusion_matrix(y_true, y_pred):
@@ -178,7 +177,7 @@ def print_confusion_matrix(y_true, y_pred):
     col_w = 8
     lbl_w = 7
 
-    print(f"\n  {'Matriz de Confusão':^{lbl_w + col_w * n}}")
+    print(f"\n  {'Confusion Matrix':^{lbl_w + col_w * n}}")
     print(f"  {' '*lbl_w}{'predicted':^{col_w * n}}")
     print(f"  {' '*lbl_w}" + "".join(f"{NAMES[l]:>{col_w}}" for l in present))
     print(f"  {' '*lbl_w}{'─' * (col_w * n)}")
@@ -197,7 +196,7 @@ def print_confusion_matrix(y_true, y_pred):
         print(row)
 
     print(f"  {' '*lbl_w}{'─' * (col_w * n)}")
-    print(f"\n  {'Classe':<10} {'Corretas':>9} {'Total':>7} {'Acurácia':>10}")
+    print(f"\n  {'Class':<10} {'Correct':>9} {'Total':>7} {'Accuracy':>10}")
     print(f"  {'─'*42}")
     for i, label in enumerate(present):
         total   = cm[i, :].sum()
@@ -217,16 +216,16 @@ def run(session_path):
     print(f"\n{BOLD}{'═'*62}{RESET}")
     print(f"{BOLD}  EVALUATE CLASSIFIER  (blind timing){RESET}")
     print(f"  {DIM}{session_path}{RESET}")
-    print(f"  bloco: {BLOCK_DURATION}s  |  cue: {CUE_DURATION}s  |  "
-          f"época: [{EPOCH_TMIN}s → {EPOCH_TMAX}s] após mi_start")
-    print(f"  → classifica [{CLASSIFY_ONSET}s → {CLASSIFY_OFFSET}s] em cada bloco")
+    print(f"  block: {BLOCK_DURATION}s  |  cue: {CUE_DURATION}s  |  "
+          f"epoch: [{EPOCH_TMIN}s → {EPOCH_TMAX}s] after mi_start")
+    print(f"  → classifies [{CLASSIFY_ONSET}s → {CLASSIFY_OFFSET}s] in each block")
     print(f"  preprocessing: avg ref → bandpass {L_FREQ}–{H_FREQ}Hz → "
           f"notch {NOTCH_FREQ}Hz → ICA")
     print(f"{BOLD}{'═'*62}{RESET}\n")
 
     # Modelos
     clf_gate, clf_axis, clf_dir = load_models(session_path)
-    print(f"{GREEN}✓ Modelos carregados{RESET}")
+    print(f"{GREEN}✓ Models loaded{RESET}")
     print(f"  gate  classes: {clf_gate.classes_}")
     print(f"  axis  classes: {clf_axis.classes_}  "
           f"(Mãos={clf_axis.classes_[0]}, Pés={clf_axis.classes_[1]})")
@@ -236,31 +235,31 @@ def run(session_path):
     # Dados
     eeg, times, markers, sfreq, ch_cols = load_session(session_path)
     total_duration = times[-1]
-    print(f"{GREEN}✓ EEG: {eeg.shape[0]} canais × {eeg.shape[1]} amostras "
+    print(f"{GREEN}✓ EEG: {eeg.shape[0]} channels × {eeg.shape[1]} samples "
           f"@ {sfreq:.0f}Hz  ({total_duration:.1f}s){RESET}")
 
     # Pré-processamento
-    print(f"{DIM}A pré-processar EEG...{RESET}", end="", flush=True)
+    print(f"{DIM}Preprocessing EEG...{RESET}", end="", flush=True)
     raw      = preprocess_mne(eeg, sfreq, ch_cols)
     eeg_proc = raw.get_data()
-    print(f"\r{GREEN}✓ EEG pré-processado{RESET}                        \n")
+    print(f"\r{GREEN}✓ EEG preprocessed{RESET}                        \n")
 
-    # Ground truth a partir dos markers (só para verificação final)
+    # Ground truth from markers (only for final verification)
     mi_markers = (markers[markers["event"] == "mi_start"]
                   .sort_values("timestamp")
                   .reset_index(drop=True))
 
     # ----------------------------------------------------------
-    # Classificação blind: avança bloco a bloco pela timeline
-    # sem consultar os markers
+    # Blind classification: step through the timeline block by block
+    # without consulting the markers
     # ----------------------------------------------------------
     n_blocks    = int(total_duration / BLOCK_DURATION)
     block_times = [b * BLOCK_DURATION for b in range(n_blocks)]
 
-    print(f"  {n_blocks} blocos × {BLOCK_DURATION}s  "
-          f"| classifica [{CLASSIFY_ONSET}s → {CLASSIFY_OFFSET}s] em cada bloco\n")
-    print(f"  {'Bloco':>5}  {'t_class':>8}  {'Predição':<10}  "
-          f"{'Ground Truth':<12}  {'':6}  {'Nota'}")
+    print(f"  {n_blocks} blocks x {BLOCK_DURATION}s  "
+          f"| classifies [{CLASSIFY_ONSET}s → {CLASSIFY_OFFSET}s] in each block\n")
+    print(f"  {'Block':>5}  {'t_class':>8}  {'Prediction':<10}  "
+          f"{'Ground Truth':<12}  {'':6}  {'Note'}")
     print(f"  {'─'*62}")
 
     predictions = []   # (t_block, pred)
@@ -271,7 +270,7 @@ def run(session_path):
 
         mask = (times >= t_s) & (times < t_e)
         if mask.sum() < 2:
-            print(f"  {b+1:>5}  {t_s:>7.1f}s  {DIM}sem amostras — saltado{RESET}")
+            print(f"  {b+1:>5}  {t_s:>7.1f}s  {DIM}no samples — skipped{RESET}")
             continue
 
         epoch = eeg_proc[:, mask]
@@ -281,7 +280,7 @@ def run(session_path):
         pc = CLASS_COLOR.get(pred, RESET)
         pred_s = f"{pc}{BOLD}{NAMES[pred]:<10}{RESET}"
 
-        # Procura o marker correspondente a este bloco (para display)
+        # Find the marker corresponding to this block (for display)
         t_mi_expected = t_block + CUE_DURATION
         match = mi_markers[np.abs(mi_markers["timestamp"] - t_mi_expected) < 0.5]
         if not match.empty:
@@ -301,7 +300,7 @@ def run(session_path):
         print(f"  {b+1:>5}  {t_s:>7.1f}s  {pred_s}  {gt_s}  {icon}      {note}")
 
     # ----------------------------------------------------------
-    # Verificação: associa cada predição ao marker mais próximo
+    # Verification: match each prediction to the nearest marker
     # ----------------------------------------------------------
     y_true = []
     y_pred = []
@@ -316,7 +315,7 @@ def run(session_path):
         y_pred.append(pred)
 
     if not y_true:
-        print(f"\n{RED}Nenhuma época classificada.{RESET}")
+        print(f"\n{RED}No epochs classified.{RESET}")
         return
 
     y_true    = np.array(y_true)
@@ -326,12 +325,12 @@ def run(session_path):
     acc       = n_correct / n_total * 100
 
     print(f"\n{BOLD}{'═'*62}{RESET}")
-    print(f"{BOLD}  RESULTADOS{RESET}")
+    print(f"{BOLD}  RESULTS{RESET}")
     print(f"{'─'*62}")
-    print(f"  Blocos classificados : {n_total}")
-    print(f"  Correctos            : {GREEN}{n_correct}{RESET}")
-    print(f"  Errados              : {RED}{n_total - n_correct}{RESET}")
-    print(f"  Acurácia global      : {BOLD}{acc:.1f}%{RESET}")
+    print(f"  Classified blocks   : {n_total}")
+    print(f"  Correct              : {GREEN}{n_correct}{RESET}")
+    print(f"  Wrong                : {RED}{n_total - n_correct}{RESET}")
+    print(f"  Overall accuracy     : {BOLD}{acc:.1f}%{RESET}")
 
     print_confusion_matrix(y_true, y_pred)
     print(f"\n{BOLD}{'═'*62}{RESET}\n")
@@ -343,10 +342,10 @@ def run(session_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Avalia o classificador BCI com timing blind (sem consultar markers)."
+        description="Evaluate the BCI classifier with blind timing (without looking at markers)."
     )
     parser.add_argument("session_path", nargs="?",
-                        help="Pasta da sessão (eeg_raw.csv, markers.csv, modelos .pkl)")
+                        help="Session folder (eeg_raw.csv, markers.csv, models .pkl)")
     args = parser.parse_args()
 
     if args.session_path:
@@ -364,9 +363,9 @@ if __name__ == "__main__":
                         for f in ("eeg_raw.csv", "eeg_data.csv"))
             ])
         if not sessions:
-            print("Uso: python evaluate_classifier.py <session_path>")
+            print("Usage: python evaluate_classifier.py <session_path>")
             sys.exit(1)
         session_path = sessions[-1]
-        print(f"A usar sessão mais recente: {session_path}")
+        print(f"Using most recent session: {session_path}")
 
     run(session_path)

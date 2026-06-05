@@ -40,7 +40,7 @@ from PyQt5.QtWidgets import (
     QLabel, QTextEdit, QFrame, QSizePolicy, QComboBox, QPushButton
 )
 
-# Configurações globais do sistema, tempos e aspeto visual da GUI
+# Global system settings, timing, and GUI appearance
 REST_DURATION  = 3.0    
 MI_DURATION    = 5.0    
 MOVE_DURATION  = 1.0    
@@ -81,14 +81,14 @@ COLOR_YELLOW   = "#e8c84c"
 CLASS_COLORS = {0: COLOR_REST, 1: COLOR_LEFT, 2: COLOR_RIGHT, 3: COLOR_FEET}
 
 
-# Nomes anatómicos dos canais — idêntico ao train_subject_model.py
+# Anatomical channel names — identical to train_subject_model.py
 CHANNEL_NAMES = ["F3", "F4", "FC4", "C3", "FCz", "CP3", "CP4", "CPz"]
 
-# Janela de classificação = EPOCH_TMAX - EPOCH_TMIN do treino (4.5 - 0.5 = 4.0 s)
+# Classification window = EPOCH_TMAX - EPOCH_TMIN from training (4.5 - 0.5 = 4.0 s)
 WINDOW_SEC = EPOCH_TMAX - EPOCH_TMIN   # 4.0 s
 
 
-# Funções de processamento de sinal e conversão de dados do buffer para épocas MNE
+# Signal processing functions and conversion of buffer data to MNE epochs
 def preprocess_raw(raw):
     raw.filter(L_FREQ, H_FREQ, fir_design="firwin", verbose=False)
     raw.notch_filter(freqs=NOTCH_FREQS, method="fir", verbose=False)
@@ -122,24 +122,24 @@ def process_buffer_to_epoch(eeg_data, sfreq):
     # [3] FIR bandpass + [4] Notch (igual ao treino)
     raw = preprocess_raw(raw)
 
-    # [5] Pega os últimos n_need samples (janela de classificação sem onset fixo)
-    data = raw.get_data()          # (n_ch, n_samples_totais)
+    # [5] Take the last n_need samples (classification window with no fixed onset)
+    data = raw.get_data()          # (n_ch, n_total_samples)
     return data[:, -n_need:]       # (n_ch, n_need)
 
 
-# Pipeline de classificação em cascata (Gating -> Axis -> Direction)
-# Os labels são os mesmos definidos no train_subject_model.py:
+# Cascade classification pipeline (Gating -> Axis -> Direction)
+# The labels are the same as defined in train_subject_model.py:
 #   GATING:    0=REST, 1=ACTIVE
 #   AXIS:      0=HANDS, 1=FEET
 #   DIRECTION: 1=LEFT,  2=RIGHT
 def classify_cascade(epoch_data, clf_gate, clf_axis, clf_dir):
     w = epoch_data[np.newaxis, :, :]   # (1, n_ch, n_times)
 
-    # [1] GATING: 0=REST → para aqui
+    # [1] GATING: 0=REST -> here
     if clf_gate.predict(w)[0] == 0:
         return 0
 
-    # [2] AXIS: 1=FEET → devolve FEET (3)
+    # [2] AXIS: 1=FEET -> return FEET (3)
     if clf_axis.predict(w)[0] == 1:
         return 3
 
@@ -157,7 +157,7 @@ def send_command(serial_conn, cmd):
         pass
 
 
-# Thread em background que gere a ligação BrainFlow, lê o buffer e dita as fases do ciclo
+# Background thread that manages the BrainFlow connection, reads the buffer, and drives the cycle phases
 class RealTimeWorker(QObject):
     status_update = pyqtSignal(str, str)          
     state_update  = pyqtSignal(str, int)          
@@ -208,8 +208,8 @@ class RealTimeWorker(QObject):
             self.finished.emit()
             return
 
-        # Padding extra para o filtro FIR não ter artefactos de borda
-        # na janela de classificação. 2 s é seguro para filtros MNE a ~250 Hz.
+        # Extra padding so the FIR filter does not have edge artifacts
+        # in the classification window. 2 s is safe for MNE filters at ~250 Hz.
         FILTER_PAD_SEC = 2.0
         n_need  = int(round(sfreq * WINDOW_SEC))
         n_total = int(round(sfreq * (WINDOW_SEC + FILTER_PAD_SEC)))
@@ -227,7 +227,7 @@ class RealTimeWorker(QObject):
                 
             self.status_update.emit("Running Cycle", "ok")
 
-            # 1. Fase REST
+            # 1. REST phase
             self.state_update.emit("rest", 0)
             self.log_signal.emit(f"Rest Phase ({REST_DURATION}s)...")
             self.board.get_board_data() 
@@ -238,10 +238,10 @@ class RealTimeWorker(QObject):
             
             if self._stop or self._paused: continue
 
-            # 2. Fase THINK (Imagética Motora)
+            # 2. THINK phase (Motor Imagery)
             self.state_update.emit("think", 0)
             self.log_signal.emit(f"▸ THINK WINDOW: Control the system now! ({WINDOW_SEC + FILTER_PAD_SEC:.1f}s incl. filter pad)")
-            self.board.get_board_data()   # limpa buffer antes de começar
+            self.board.get_board_data()   # clear buffer before starting
             
             t_end = time.time() + WINDOW_SEC + FILTER_PAD_SEC
             while time.time() < t_end and not self._stop and not self._paused:
@@ -249,7 +249,7 @@ class RealTimeWorker(QObject):
 
             if self._stop or self._paused: continue
 
-            # 3. Classificação
+            # 3. Classification
             self.log_signal.emit("Processing buffer...")
             raw_data    = self.board.get_board_data()
             eeg_samples = raw_data[eeg_channels, :]   # (n_ch, n_samples)
@@ -258,8 +258,8 @@ class RealTimeWorker(QObject):
                 self.log_signal.emit("Insufficient samples, skipping trial.")
                 continue
 
-            # Passa as últimas n_total amostras (janela + padding);
-            # process_buffer_to_epoch descarta o padding depois de filtrar.
+            # Pass the last n_total samples (window + padding);
+            # process_buffer_to_epoch drops the padding after filtering.
             eeg_segment = eeg_samples[:, -min(eeg_samples.shape[1], n_total):]
 
             try:
@@ -272,7 +272,7 @@ class RealTimeWorker(QObject):
             self.prediction_signal.emit(pred)
             self.log_signal.emit(f"➔ Output: {NAMES[pred]} {SYMBOLS[pred]}")
 
-            # 4. Ação do Robot
+            # 4. Robot action
             self.state_update.emit("move", pred)
             cmd = COMMAND_MAP[pred]
             
@@ -301,7 +301,7 @@ class RealTimeWorker(QObject):
         self.finished.emit()
 
 
-# Componentes Visuais Customizados: Desenho do braço robótico e indicadores de estado
+# Custom Visual Components: robotic arm drawing and state indicators
 class ArmDiagram(QWidget):
     def __init__(self):
         super().__init__()
@@ -374,7 +374,7 @@ class PredIndicator(QWidget):
         p.end()
 
 
-# Classe principal da Interface Gráfica (Janela, Botões e atualização de estados)
+# Main GUI class (Window, Buttons, and state updates)
 class RealTimeWindow(QWidget):
     def __init__(self, session_path):
         super().__init__()
@@ -623,7 +623,7 @@ class RealTimeWindow(QWidget):
         event.accept()
 
 
-# Ponto de entrada padrão para executar o script e localizar os classificadores gravados
+# Standard entry point to run the script and locate the trained classifiers
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BCI Real-Time Robot Control Window")
     parser.add_argument("session_path", nargs="?", help="Path containing model pkl files from training")

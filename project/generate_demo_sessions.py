@@ -49,28 +49,28 @@ RUNS_HANDS = [4, 8, 12]
 RUNS_FEET  = [6, 10, 14]
 RUNS_REST  = [1, 2]
 
-N_COMMANDS   = 15     # nº de comandos activos na sessão
+N_COMMANDS   = 15     # number of active commands in the session
 
-# Timing fixo por bloco — TODOS os blocos têm exactamente isto
-CUE_DURATION   = 2.0  # segundos de cue (classificador ignora)
-MI_DURATION    = 5.0  # segundos de MI real contínuo
-BLOCK_DURATION = CUE_DURATION + MI_DURATION   # = 7.0s por bloco
+# Fixed timing per block — ALL blocks use exactly this
+CUE_DURATION   = 2.0  # seconds of cue (classifier ignores)
+MI_DURATION    = 5.0  # seconds of continuous actual MI
+BLOCK_DURATION = CUE_DURATION + MI_DURATION   # = 7.0s per block
 
 # Janela que o classificador vai usar (tem de caber dentro de MI_DURATION)
 EPOCH_TMIN = 1.0   # após mi_start
 EPOCH_TMAX = 3.5   # após mi_start  →  3.5s < 5.0s ✓
 
-assert EPOCH_TMAX <= MI_DURATION, "EPOCH_TMAX tem de caber dentro do MI!"
+assert EPOCH_TMAX <= MI_DURATION, "EPOCH_TMAX must fit inside MI duration!"
 
 # ============================================================
-# EXTRACÇÃO DE SEGMENTOS
+# SEGMENT EXTRACTION
 # ============================================================
 
 def extract_mi_segments(raw, min_duration_sec):
     """
-    Extrai segmentos de EEG por classe (T0/T1/T2) a partir dos eventos.
-    Só guarda segmentos com duração >= min_duration_sec.
-    Devolve: dict {event_label: [array(n_ch, n_samp), ...]}
+    Extract EEG segments by class (T0/T1/T2) from events.
+    Only keep segments with duration >= min_duration_sec.
+    Returns: dict {event_label: [array(n_ch, n_samp), ...]}
     """
     events, event_id = mne.events_from_annotations(raw, verbose=False)
     sfreq     = raw.info["sfreq"]
@@ -92,8 +92,8 @@ def extract_mi_segments(raw, min_duration_sec):
 
 def extract_rest_segments(raw, min_duration_sec):
     """
-    Extrai janelas deslizantes de baseline dos runs de olhos fechados.
-    O sinal inteiro é REST — não há eventos MI.
+    Extract sliding baseline windows from eyes-closed runs.
+    The entire signal is REST — there are no MI events.
     """
     sfreq     = raw.info["sfreq"]
     min_samps = int(min_duration_sec * sfreq)
@@ -106,16 +106,16 @@ def extract_rest_segments(raw, min_duration_sec):
 
 def pick_segment(seg, n_samps):
     """
-    Pega num segmento e devolve exactamente n_samps amostras.
-    Se o segmento for maior: escolhe um offset aleatório dentro dele.
-    Se for mais curto: não devia acontecer (filtramos por min_duration).
+    Take a segment and return exactly n_samps samples.
+    If the segment is longer: choose a random offset inside it.
+    If it is shorter: that should not happen (we filter by min_duration).
     """
     if seg.shape[1] >= n_samps:
         max_offset = seg.shape[1] - n_samps
         offset = random.randint(0, max_offset)
         return seg[:, offset : offset + n_samps]
     else:
-        # Fallback de segurança: repete o sinal
+        # Safety fallback: repeat the signal
         reps = int(np.ceil(n_samps / seg.shape[1]))
         return np.tile(seg, (1, reps))[:, :n_samps]
 
@@ -140,7 +140,7 @@ def build_session(subject):
             raws.append(r)
         return raws
 
-    print("  A carregar dados do PhysioNet...")
+    print("  Loading PhysioNet data...")
     raws_hands = load_runs(RUNS_HANDS)
     raws_feet  = load_runs(RUNS_FEET)
     raws_rest  = load_runs(RUNS_REST)
@@ -151,7 +151,7 @@ def build_session(subject):
     n_mi_samps   = int(MI_DURATION   * sfreq)   # amostras de MI por bloco
     n_blk_samps  = int(BLOCK_DURATION * sfreq)   # amostras totais por bloco
 
-    # --- Extrai segmentos (precisam ter pelo menos MI_DURATION de duração) ---
+    # --- Extract segments (must last at least MI_DURATION) ---
     left_segs  = []
     right_segs = []
     feet_segs  = []
@@ -169,7 +169,7 @@ def build_session(subject):
     for r in raws_rest:
         rest_segs.extend(extract_rest_segments(r, MI_DURATION))
 
-    print(f"  Segmentos disponíveis:")
+    print(f"  Available segments:")
     print(f"    LEFT  (T1 hands): {len(left_segs)}")
     print(f"    RIGHT (T2 hands): {len(right_segs)}")
     print(f"    FEET  (T2 feet):  {len(feet_segs)}")
@@ -178,9 +178,9 @@ def build_session(subject):
     for name, lst in [("LEFT", left_segs), ("RIGHT", right_segs),
                       ("FEET", feet_segs),  ("REST",  rest_segs)]:
         if not lst:
-            raise ValueError(f"Sem segmentos para {name} no sujeito {subject}!")
+            raise ValueError(f"No segments for {name} in subject {subject}!")
 
-    # --- Gera sequência de comandos ---
+    # --- Generate command sequence ---
     # Garante que as 3 classes activas aparecem pelo menos N_COMMANDS//3 vezes
     active = ([1, 2, 3] * (N_COMMANDS // 3 + 1))[:N_COMMANDS]
     random.shuffle(active)
@@ -191,7 +191,7 @@ def build_session(subject):
         sequence.append(0)    # REST
         sequence.append(cls)  # comando activo
 
-    # --- Constrói EEG bloco a bloco ---
+    # --- Build EEG block by block ---
     eeg_blocks = []
     markers    = []
     t          = 0.0
@@ -202,10 +202,10 @@ def build_session(subject):
         pool = {0: rest_segs, 1: left_segs, 2: right_segs, 3: feet_segs}[label]
         mi_seg = pick_segment(random.choice(pool), n_mi_samps)
 
-        # Constrói o bloco completo de n_blk_samps:
-        #   [CUE: n_cue_samps de REST qualquer] + [MI: n_mi_samps da classe]
-        # A descontinuidade fica no corte entre o bloco anterior e o cue —
-        # o classificador nunca toca nesse período.
+        # Build the full block of n_blk_samps:
+        #   [CUE: n_cue_samps of arbitrary REST] + [MI: n_mi_samps of the class]
+        # The discontinuity is at the boundary between the previous block and the cue —
+        # the classifier never touches that period.
         n_cue_samps = n_blk_samps - n_mi_samps   # = CUE_DURATION * sfreq
         cue_seg = pick_segment(random.choice(rest_segs), n_cue_samps)
 
@@ -234,7 +234,7 @@ def build_session(subject):
           f"{sum(1 for s in sequence if s==2)} RIGHT  "
           f"{sum(1 for s in sequence if s==3)} FEET)")
 
-    # Verificação de alinhamento
+    # Alignment verification
     print(f"\n  Verificação épocas [mi_start+{EPOCH_TMIN}s → mi_start+{EPOCH_TMAX}s]:")
     mi_rows = [(m[0], m[2]) for m in markers if m[1] == "mi_start"]
     all_ok  = True
@@ -247,7 +247,7 @@ def build_session(subject):
             all_ok = False
             print(f"    ✗ label={lbl} epoch_end={t_epoch_end:.2f} > block_end={t_block_end:.2f}")
     if all_ok:
-        print(f"    ✓ todas as {len(mi_rows)} épocas estão dentro dos blocos MI")
+        print(f"    ✓ all {len(mi_rows)} epochs are inside their MI blocks")
 
     # Guarda
     eeg_df = pd.DataFrame(eeg.T, columns=[f"ch_{i}" for i in range(8)])
@@ -264,8 +264,8 @@ def build_session(subject):
         f.write(str(sfreq))
 
     print(f"\n  → {out_dir}/")
-    print(f"     eeg_raw.csv  {eeg_df.shape[0]} linhas × {eeg_df.shape[1]} colunas")
-    print(f"     markers.csv  {marker_df.shape[0]} linhas")
+    print(f"     eeg_raw.csv  {eeg_df.shape[0]} rows × {eeg_df.shape[1]} columns")
+    print(f"     markers.csv  {marker_df.shape[0]} rows")
     print(f"     sfreq.txt    {sfreq} Hz")
 
 
@@ -279,7 +279,7 @@ for subject in SUBJECTS:
     build_session(subject)
 
 print("\n\nDONE")
-print(f"Sessões em: {OUT_DIR}/")
-print(f"\nEstrutura de cada bloco ({BLOCK_DURATION}s):")
-print(f"  [0s → {CUE_DURATION}s]        cue  — classificador ignora")
-print(f"  [{CUE_DURATION}s → {BLOCK_DURATION}s]  MI real  — classificador usa [{CUE_DURATION+EPOCH_TMIN}s → {CUE_DURATION+EPOCH_TMAX}s]")
+print(f"Sessions in: {OUT_DIR}/")
+print(f"\nBlock structure ({BLOCK_DURATION}s):")
+print(f"  [0s → {CUE_DURATION}s]        cue  — classifier ignores")
+print(f"  [{CUE_DURATION}s → {BLOCK_DURATION}s]  actual MI  — classifier uses [{CUE_DURATION+EPOCH_TMIN}s → {CUE_DURATION+EPOCH_TMAX}s]")
