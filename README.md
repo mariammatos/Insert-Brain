@@ -59,6 +59,19 @@ Before running real-time robot control, upload the firmware to the Arduino:
 
 This is required before any session using `realtime_robot_control.py`, `manual_robot_control.py` or `offline_playback_robot_control.py`.
 
+## PhysioNet Demo Dataset
+
+The notebook `project/PhysioNet_Cascade_DemoSession.ipynb` processes the first 50 subjects from the PhysioNet EEG Motor Movement/Imagery Database to:
+
+- Train and evaluate cascaded classifiers (GATING → AXIS → DIRECTION)
+- Split each subject's data into 80% training / 20% holdout
+- Generate demo sessions using the holdout data
+- Create evaluation reports
+
+**Note:** This notebook works in both Google Colab and VS Code:
+- **Colab**: Saves results to Google Drive (`/content/drive/MyDrive/BCI_RoboticArm/HoldoutDemo`)
+- **VS Code**: Saves locally to `./holdout_demo_sessions`
+
 ## Notes
 
 - Most utility scripts are helper modules for the main workflows
