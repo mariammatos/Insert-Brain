@@ -13,6 +13,7 @@
 import numpy as np
 import joblib
 import os
+import json
 
 from train_subject_model import (
     load_session_data,
@@ -132,9 +133,9 @@ def train_multi_session_model(session_paths, output_dir):
     print("Axis:", X_axis.shape)
     print("Direction:", X_dir.shape)
 
-    clf_gate, _ = train_pipeline(X_gate, y_gate, "GATING")
-    clf_axis, _ = train_pipeline(X_axis, y_axis, "AXIS")
-    clf_dir, _ = train_pipeline(X_dir, y_dir, "DIRECTION")
+    clf_gate, metrics_gate = train_pipeline(X_gate, y_gate, "GATING")
+    clf_axis, metrics_axis = train_pipeline(X_axis, y_axis, "AXIS")
+    clf_dir,  metrics_dir  = train_pipeline(X_dir,  y_dir,  "DIRECTION")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -142,6 +143,39 @@ def train_multi_session_model(session_paths, output_dir):
     joblib.dump(clf_axis, os.path.join(output_dir, "model_axis.pkl"))
     joblib.dump(clf_dir, os.path.join(output_dir, "model_direction.pkl"))
 
+    report = {
+        "session_paths": session_paths,
+        "gating": {
+            "acc_mean":          metrics_gate["acc_mean"],
+            "acc_std":           metrics_gate["acc_std"],
+            "kappa_mean":        metrics_gate["kappa_mean"],
+            "kappa_std":         metrics_gate["kappa_std"],
+            "balanced_accuracy": metrics_gate["balanced_accuracy"],
+            "f1_score":          metrics_gate["f1_score"],
+        },
+        "axis": {
+            "acc_mean":          metrics_axis["acc_mean"],
+            "acc_std":           metrics_axis["acc_std"],
+            "kappa_mean":        metrics_axis["kappa_mean"],
+            "kappa_std":         metrics_axis["kappa_std"],
+            "balanced_accuracy": metrics_axis["balanced_accuracy"],
+            "f1_score":          metrics_axis["f1_score"],
+        },
+        "direction": {
+            "acc_mean":          metrics_dir["acc_mean"],
+            "acc_std":           metrics_dir["acc_std"],
+            "kappa_mean":        metrics_dir["kappa_mean"],
+            "kappa_std":         metrics_dir["kappa_std"],
+            "balanced_accuracy": metrics_dir["balanced_accuracy"],
+            "f1_score":          metrics_dir["f1_score"],
+        },
+    }
+
+    report_path = os.path.join(output_dir, "training_report.json")
+    with open(report_path, "w") as f:
+        json.dump(report, f, indent=4)
+
+    print(f"\nReport saved")
     print("\nModels saved.")
 
 # ============================================================
@@ -179,11 +213,9 @@ if __name__ == "__main__":
     if args.name:
 
         prefix = os.path.basename(args.name)
+        base_dir = os.path.dirname(args.name) or "data"
 
-        search_pattern = os.path.join(
-            os.path.dirname(args.name) or "data",
-            f"{prefix}_*"
-        )
+        search_pattern = os.path.join(base_dir, "**", f"{prefix}*")
 
         sessions = [
             p for p in glob.glob(search_pattern)

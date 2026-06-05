@@ -1,0 +1,33 @@
+{
+    "session_paths": [
+        "data\\Afonso_raws\\Afonso3FC_20260602_115948",
+        "data\\Afonso_raws\\Afonso3FC_20260602_121042_cleaned",
+        "data\\Afonso_raws\\Afonso3FC_20260602_122428_cleaned",
+        "data\\Afonso_raws\\Afonso3FC_20260602_123342_cleaned",
+        "data\\Afonso_raws\\Afonso3FC_20260602_124216"
+    ],
+    "gating": {
+        "acc_mean": 0.596626180836707,
+        "acc_std": 0.08179785423894344,
+        "kappa_mean": 0.19391016809038303,
+        "kappa_std": 0.16395765205930307,
+        "balanced_accuracy": 0.5969298245614035,
+        "f1_score": 0.5967923271452555
+    },
+    "axis": {
+        "acc_mean": 0.7684210526315789,
+        "acc_std": 0.0631578947368421,
+        "kappa_mean": 0.5368849290925379,
+        "kappa_std": 0.124982743764892,
+        "balanced_accuracy": 0.7679521276595744,
+        "f1_score": 0.7679064327485381
+    },
+    "direction": {
+        "acc_mean": 0.5333333333333332,
+        "acc_std": 0.0753592220347252,
+        "kappa_mean": 0.05117536140791956,
+        "kappa_std": 0.19084448225419218,
+        "balanced_accuracy": 0.5326086956521738,
+        "f1_score": 0.531490903484428
+    }
+}

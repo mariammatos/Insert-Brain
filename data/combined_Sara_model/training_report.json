@@ -1,0 +1,32 @@
+{
+    "session_paths": [
+        "data\\Sara_raws\\Sara_20260602_194112_cleaned",
+        "data\\Sara_raws\\Sara_20260602_195139_cleaned",
+        "data\\Sara_raws\\Sara_20260602_201908",
+        "data\\Sara_raws\\Sara_20260602_203601_cleaned"
+    ],
+    "gating": {
+        "acc_mean": 0.4302955665024631,
+        "acc_std": 0.022994955698490263,
+        "kappa_mean": -0.13253716698620802,
+        "kappa_std": 0.04825600989491423,
+        "balanced_accuracy": 0.4305555555555556,
+        "f1_score": 0.4305555555555556
+    },
+    "axis": {
+        "acc_mean": 0.5019047619047619,
+        "acc_std": 0.12217232541580629,
+        "kappa_mean": -0.009965760909157106,
+        "kappa_std": 0.2448561843108933,
+        "balanced_accuracy": 0.4934362934362934,
+        "f1_score": 0.4703703703703704
+    },
+    "direction": {
+        "acc_mean": 0.6,
+        "acc_std": 0.10690449676496978,
+        "kappa_mean": 0.18443295834600185,
+        "kappa_std": 0.19809674854773707,
+        "balanced_accuracy": 0.587171052631579,
+        "f1_score": 0.5904761904761904
+    }
+}
